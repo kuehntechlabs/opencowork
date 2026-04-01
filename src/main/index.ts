@@ -1,6 +1,18 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import { join } from "node:path";
+import { homedir } from "node:os";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+  readFileSync,
+  copyFileSync,
+  rmSync,
+} from "node:fs";
 import log from "electron-log";
+import Store from "electron-store";
 import {
   startSidecar,
   stopSidecar,
@@ -78,6 +90,102 @@ ipcMain.handle(
 ipcMain.handle("restart-sidecar", async () => {
   const url = await restartSidecar();
   return url;
+});
+
+// Projects
+const PROJECTS_DIR = join(homedir(), ".opencowork", "projects");
+const appStore = new Store({ name: "opencowork-state" });
+
+ipcMain.handle("list-projects", () => {
+  if (!existsSync(PROJECTS_DIR)) return [];
+  try {
+    const entries = readdirSync(PROJECTS_DIR, { withFileTypes: true });
+    return entries
+      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .map((e) => {
+        const p = join(PROJECTS_DIR, e.name);
+        const st = statSync(p);
+        return {
+          name: e.name,
+          path: p,
+          hasAgentsMd: existsSync(join(p, "AGENTS.md")),
+          createdAt: st.birthtimeMs,
+        };
+      })
+      .sort((a, b) => b.createdAt - a.createdAt);
+  } catch (err) {
+    log.warn("Failed to list projects:", err);
+    return [];
+  }
+});
+
+ipcMain.handle(
+  "create-project",
+  (
+    _event,
+    opts: {
+      name: string;
+      instructions?: string;
+      filePaths?: string[];
+    },
+  ) => {
+    const projectDir = join(PROJECTS_DIR, opts.name);
+    mkdirSync(projectDir, { recursive: true });
+    if (opts.instructions) {
+      writeFileSync(join(projectDir, "AGENTS.md"), opts.instructions);
+    }
+    if (opts.filePaths) {
+      for (const src of opts.filePaths) {
+        const fileName = src.split("/").pop() || src.split("\\").pop() || "file";
+        copyFileSync(src, join(projectDir, fileName));
+      }
+    }
+    const st = statSync(projectDir);
+    return {
+      name: opts.name,
+      path: projectDir,
+      hasAgentsMd: !!opts.instructions,
+      createdAt: st.birthtimeMs,
+    };
+  },
+);
+
+ipcMain.handle("delete-project", (_event, name: string) => {
+  const projectDir = join(PROJECTS_DIR, name);
+  // Safety: only delete if under PROJECTS_DIR
+  if (!projectDir.startsWith(PROJECTS_DIR)) return false;
+  if (existsSync(projectDir)) {
+    rmSync(projectDir, { recursive: true });
+  }
+  return true;
+});
+
+ipcMain.handle("open-file-picker", async () => {
+  if (!mainWindow) return [];
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openFile", "multiSelections"],
+    title: "Add Files",
+  });
+  if (result.canceled) return [];
+  return result.filePaths;
+});
+
+ipcMain.handle("get-recent-directories", () => {
+  return appStore.get("recentDirectories", []) as {
+    path: string;
+    lastUsed: number;
+  }[];
+});
+
+ipcMain.handle("add-recent-directory", (_event, dirPath: string) => {
+  const recent = (
+    appStore.get("recentDirectories", []) as {
+      path: string;
+      lastUsed: number;
+    }[]
+  ).filter((r) => r.path !== dirPath);
+  recent.unshift({ path: dirPath, lastUsed: Date.now() });
+  appStore.set("recentDirectories", recent.slice(0, 10));
 });
 
 // App lifecycle

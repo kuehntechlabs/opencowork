@@ -20,6 +20,35 @@ const api = {
     ipcRenderer.invoke("write-provider-config", config),
   restartSidecar: (): Promise<string | null> =>
     ipcRenderer.invoke("restart-sidecar"),
+
+  // Projects
+  listProjects: (): Promise<
+    {
+      name: string;
+      path: string;
+      hasAgentsMd: boolean;
+      createdAt: number;
+    }[]
+  > => ipcRenderer.invoke("list-projects"),
+  createProject: (opts: {
+    name: string;
+    instructions?: string;
+    filePaths?: string[];
+  }): Promise<{
+    name: string;
+    path: string;
+    hasAgentsMd: boolean;
+    createdAt: number;
+  }> => ipcRenderer.invoke("create-project", opts),
+  deleteProject: (name: string): Promise<boolean> =>
+    ipcRenderer.invoke("delete-project", name),
+  openFilePicker: (): Promise<string[]> =>
+    ipcRenderer.invoke("open-file-picker"),
+  getRecentDirectories: (): Promise<
+    { path: string; lastUsed: number }[]
+  > => ipcRenderer.invoke("get-recent-directories"),
+  addRecentDirectory: (path: string): Promise<void> =>
+    ipcRenderer.invoke("add-recent-directory", path),
 };
 
 contextBridge.exposeInMainWorld("api", api);

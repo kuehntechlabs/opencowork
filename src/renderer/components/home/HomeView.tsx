@@ -91,7 +91,7 @@ export function HomeView() {
         )}
         {connected && !directory && (
           <p className="text-sm text-text-tertiary">
-            Select a working directory to get started
+            Select a project or folder to get started
           </p>
         )}
 
