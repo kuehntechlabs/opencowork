@@ -139,9 +139,79 @@ export async function replyPermission(
   });
 }
 
+// Session revert / unrevert (undo / redo)
+export async function revertSession(sessionId: string): Promise<void> {
+  await request(`/session/${sessionId}/revert`, { method: "POST" });
+}
+
+export async function unrevertSession(sessionId: string): Promise<void> {
+  await request(`/session/${sessionId}/unrevert`, { method: "POST" });
+}
+
+// Session summarize (compact)
+export async function summarizeSession(
+  sessionId: string,
+  providerID: string,
+  modelID: string,
+): Promise<void> {
+  await request(`/session/${sessionId}/summarize`, {
+    method: "POST",
+    body: JSON.stringify({ providerID, modelID }),
+  });
+}
+
+// Session share / unshare
+export async function shareSession(sessionId: string): Promise<string> {
+  const res = await request<{ url: string }>(`/session/${sessionId}/share`, {
+    method: "POST",
+  });
+  return res.url;
+}
+
+export async function unshareSession(sessionId: string): Promise<void> {
+  await request(`/session/${sessionId}/unshare`, { method: "POST" });
+}
+
 // Agent API
 export async function listAgents(): Promise<AgentInfo[]> {
   return request("/agent");
+}
+
+// Command API — lists custom commands (skills, MCPs, user-defined)
+export interface CustomCommand {
+  name: string;
+  description: string;
+  source: "skill" | "mcp" | "command";
+}
+
+export async function listCommands(): Promise<CustomCommand[]> {
+  try {
+    return await request<CustomCommand[]>("/command");
+  } catch {
+    return [];
+  }
+}
+
+// Execute a custom command (skill/MCP) in a session
+export async function executeCommand(
+  sessionId: string,
+  command: string,
+  args: string,
+  options?: {
+    agent?: string;
+    model?: string;
+    variant?: string;
+  },
+): Promise<void> {
+  await fetch(`${baseUrl}/session/${sessionId}/command`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify({
+      command,
+      arguments: args,
+      ...options,
+    }),
+  });
 }
 
 // Health check
