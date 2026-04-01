@@ -10,6 +10,7 @@ import { ErrorBoundary } from "./components/common/ErrorBoundary";
 export function App() {
   const { connected, initializing, setUrl, setConnected, setInitializing } =
     useServerStore();
+  const setDirectory = useServerStore((s) => s.setDirectory);
   const loadSessions = useSessionStore((s) => s.loadSessions);
   const directory = useServerStore((s) => s.directory);
 
@@ -18,6 +19,15 @@ export function App() {
 
     async function init() {
       try {
+        // Restore last used directory before connecting so sessions load immediately
+        const currentDir = useServerStore.getState().directory;
+        if (!currentDir) {
+          const recent = await window.api.getRecentDirectories();
+          if (!cancelled && recent.length > 0) {
+            setDirectory(recent[0].path);
+          }
+        }
+
         const serverUrl = await window.api.getServerUrl();
         if (cancelled) return;
 

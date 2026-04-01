@@ -4,6 +4,7 @@ import { MessageInput } from "../input/MessageInput";
 import { useSessionStore } from "../../stores/session-store";
 import { useServerStore } from "../../stores/server-store";
 import { useSettingsStore } from "../../stores/settings-store";
+import { useProjectStore } from "../../stores/project-store";
 import { useCurrentAgent } from "../input/ComposerBar";
 import lampIconUrl from "../../assets/lamp-icon.png";
 
@@ -17,13 +18,27 @@ export function HomeView() {
   const agent = useCurrentAgent();
   const [sending, setSending] = useState(false);
 
+  const setDirectory = useServerStore((s) => s.setDirectory);
+  const { addRecentDirectory } = useProjectStore();
+
   const handleSend = useCallback(
     async (text: string) => {
-      if (!text.trim() || !directory || !connected) return;
+      if (!text.trim() || !connected) return;
+
+      // Default to user home directory if none selected
+      let dir = directory;
+      if (!dir) {
+        const path = await window.api.openDirectoryPicker();
+        if (!path) return;
+        dir = path;
+        setDirectory(dir);
+        addRecentDirectory(dir);
+      }
+
       setSending(true);
       try {
         const action = permissionMode === "bypass" ? "allow" : "ask";
-        const session = await createSession(directory, action);
+        const session = await createSession(dir, action);
         const model =
           selectedProvider && selectedModel
             ? { providerID: selectedProvider, modelID: selectedModel }
@@ -44,6 +59,8 @@ export function HomeView() {
       selectedModel,
       permissionMode,
       agent,
+      setDirectory,
+      addRecentDirectory,
     ],
   );
 
@@ -94,12 +111,12 @@ export function HomeView() {
         <div className="w-full">
           <MessageInput
             onSend={handleSend}
-            disabled={!connected || !directory || sending}
+            disabled={!connected || sending}
             placeholder={
               !connected
                 ? "Waiting for server..."
                 : !directory
-                  ? "Choose a directory first..."
+                  ? "Type to start — you'll pick a folder first"
                   : "What would you like to build?"
             }
           />
