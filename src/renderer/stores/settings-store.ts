@@ -35,7 +35,7 @@ function applyTheme(theme: Theme) {
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
-  theme: "dark",
+  theme: "system",
   sidebarOpen: true,
   selectedProvider: null,
   selectedModel: null,
@@ -67,6 +67,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 const savedTheme = localStorage.getItem("opencowork-theme") as Theme | null;
 if (savedTheme) {
   useSettingsStore.getState().setTheme(savedTheme);
+} else {
+  // Apply system theme on first load
+  applyTheme("system");
 }
 const savedMode = localStorage.getItem(
   "opencowork-permission-mode",

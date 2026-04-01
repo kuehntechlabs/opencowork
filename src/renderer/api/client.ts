@@ -1,4 +1,5 @@
 import type { Session, Message, Part, Provider } from "./types";
+import { useServerStore } from "../stores/server-store";
 
 let baseUrl: string | null = null;
 
@@ -10,25 +11,28 @@ export function getBaseUrl(): string | null {
   return baseUrl;
 }
 
-async function request<T>(
-  path: string,
-  options: RequestInit = {},
-  directory?: string,
-): Promise<T> {
-  if (!baseUrl) throw new Error("Server not connected");
+function getDirectory(): string | undefined {
+  return useServerStore.getState().directory || undefined;
+}
 
+function buildHeaders(extra?: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
+    ...extra,
   };
-
-  if (directory) {
-    headers["x-opencode-directory"] = directory;
+  const dir = getDirectory();
+  if (dir) {
+    headers["x-opencode-directory"] = dir;
   }
+  return headers;
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  if (!baseUrl) throw new Error("Server not connected");
 
   const res = await fetch(`${baseUrl}${path}`, {
     ...options,
-    headers,
+    headers: buildHeaders(options.headers as Record<string, string>),
   });
 
   if (!res.ok) {
@@ -40,8 +44,8 @@ async function request<T>(
 }
 
 // Session API
-export async function listSessions(directory?: string): Promise<Session[]> {
-  return request("/session", {}, directory);
+export async function listSessions(): Promise<Session[]> {
+  return request("/session");
 }
 
 export async function getSession(id: string): Promise<Session> {
@@ -56,14 +60,10 @@ export async function createSession(
     permissionAction === "allow"
       ? [{ permission: "*", pattern: "*", action: "allow" as const }]
       : undefined;
-  return request(
-    "/session",
-    {
-      method: "POST",
-      body: JSON.stringify({ permission }),
-    },
-    directory,
-  );
+  return request("/session", {
+    method: "POST",
+    body: JSON.stringify({ permission }),
+  });
 }
 
 export async function deleteSession(id: string): Promise<void> {
@@ -90,7 +90,6 @@ export async function getMessageParts(
   return request(`/session/${sessionId}/message/${messageId}`);
 }
 
-// POST /session/:id/message sends a prompt (streaming response)
 // POST /session/:id/prompt_async sends a prompt and returns immediately (204)
 export async function sendPrompt(
   sessionId: string,
@@ -100,11 +99,9 @@ export async function sendPrompt(
     agent?: string;
   },
 ): Promise<void> {
-  // Use prompt_async so we don't block on the streaming response
-  // SSE events will deliver the response parts
   await fetch(`${baseUrl}/session/${sessionId}/prompt_async`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildHeaders(),
     body: JSON.stringify({
       parts,
       ...options,
@@ -113,12 +110,12 @@ export async function sendPrompt(
 }
 
 // Provider API
-export async function listProviders(directory?: string): Promise<{
+export async function listProviders(): Promise<{
   all: Provider[];
   default: Record<string, string>;
   connected: string[];
 }> {
-  return request("/provider", {}, directory);
+  return request("/provider");
 }
 
 // Permission API — POST /permission/:requestID/reply

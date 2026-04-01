@@ -53,10 +53,13 @@ export function App() {
     };
   }, []);
 
-  // Load sessions when connected and directory changes
+  // Load sessions and reconnect SSE when connected and directory changes
   useEffect(() => {
     if (connected) {
-      loadSessions(directory || undefined);
+      loadSessions();
+      // Reconnect SSE so it picks up the new directory
+      disconnectSSE();
+      connectSSE();
     }
   }, [connected, directory, loadSessions]);
 

@@ -23,7 +23,7 @@ export function ModelSelector() {
 
   useEffect(() => {
     if (!connected) return;
-    listProviders(directory || undefined)
+    listProviders()
       .then((res) => {
         setAllProviders(res.all ?? []);
         setConnectedIds(res.connected ?? []);
@@ -92,7 +92,7 @@ export function ModelSelector() {
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 z-50 mb-2 w-80 rounded-lg border border-border bg-surface-secondary shadow-lg">
+        <div className="absolute top-full left-0 z-50 mt-2 w-80 rounded-lg border border-border bg-surface-secondary shadow-lg">
           {/* Search */}
           <div className="border-b border-border p-2">
             <input

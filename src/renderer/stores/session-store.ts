@@ -19,7 +19,7 @@ interface SessionState {
 
   // Actions
   setActiveSession: (id: string | null) => void;
-  loadSessions: (directory?: string) => Promise<void>;
+  loadSessions: () => Promise<void>;
   loadMessages: (sessionId: string) => Promise<void>;
   createSession: (
     directory: string,
@@ -71,10 +71,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
-  loadSessions: async (directory) => {
+  loadSessions: async () => {
     set({ loading: true });
     try {
-      const list = await api.listSessions(directory);
+      const list = await api.listSessions();
       const sessions: Record<string, Session> = {};
       for (const s of list) {
         sessions[s.id] = s;
