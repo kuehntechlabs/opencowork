@@ -1,4 +1,4 @@
-import type { Session, Message, Part, Provider } from "./types";
+import type { Session, Message, Part, Provider, AgentInfo } from "./types";
 import { useServerStore } from "../stores/server-store";
 
 let baseUrl: string | null = null;
@@ -137,6 +137,11 @@ export async function replyPermission(
     method: "POST",
     body: JSON.stringify({ reply }),
   });
+}
+
+// Agent API
+export async function listAgents(): Promise<AgentInfo[]> {
+  return request("/agent");
 }
 
 // Health check

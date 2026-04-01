@@ -1,13 +1,20 @@
 import { useState, useRef, useCallback } from "react";
 import { VoiceButton } from "./VoiceButton";
+import { ComposerBar } from "./ComposerBar";
 
 interface Props {
   onSend: (text: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  showComposerBar?: boolean;
 }
 
-export function MessageInput({ onSend, disabled, placeholder }: Props) {
+export function MessageInput({
+  onSend,
+  disabled,
+  placeholder,
+  showComposerBar = true,
+}: Props) {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -39,36 +46,46 @@ export function MessageInput({ onSend, disabled, placeholder }: Props) {
   }, []);
 
   return (
-    <div className="flex items-end gap-2 rounded-xl border border-border bg-surface-secondary p-2 focus-within:border-accent">
-      <textarea
-        ref={textareaRef}
-        value={text}
-        onChange={handleInput}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder ?? "Type a message..."}
-        disabled={disabled}
-        rows={1}
-        className="max-h-[200px] min-h-[36px] flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-text placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
-      />
-      <div className="flex items-center gap-1">
-        <VoiceButton onTranscript={handleVoiceTranscript} />
-        <button
-          onClick={handleSend}
-          disabled={disabled || !text.trim()}
-          className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-text transition-colors hover:bg-accent-hover disabled:opacity-30"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
+    <div className="rounded-xl border border-border bg-surface-secondary focus-within:border-accent">
+      {/* Textarea row */}
+      <div className="flex items-end gap-2 p-2">
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={handleInput}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder ?? "Type a message..."}
+          disabled={disabled}
+          rows={1}
+          className="max-h-[200px] min-h-[36px] flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-text placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
+        />
+        <div className="flex items-center gap-1">
+          <VoiceButton onTranscript={handleVoiceTranscript} />
+          <button
+            onClick={handleSend}
+            disabled={disabled || !text.trim()}
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-text transition-colors hover:bg-accent-hover disabled:opacity-30"
           >
-            <path d="M22 2 11 13M22 2l-7 20-4-9-9-4z" />
-          </svg>
-        </button>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M22 2 11 13M22 2l-7 20-4-9-9-4z" />
+            </svg>
+          </button>
+        </div>
       </div>
+
+      {/* Composer toolbar */}
+      {showComposerBar && (
+        <div className="border-t border-border/20 px-3 py-1.5">
+          <ComposerBar />
+        </div>
+      )}
     </div>
   );
 }

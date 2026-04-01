@@ -4,6 +4,7 @@ import { MessageInput } from "../input/MessageInput";
 import { PermissionBanner } from "./PermissionBanner";
 import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
+import { useCurrentAgent } from "../input/ComposerBar";
 import { Spinner } from "../common/Spinner";
 
 interface Props {
@@ -20,6 +21,7 @@ export function ChatView({ sessionId }: Props) {
   const sendPrompt = useSessionStore((s) => s.sendPrompt);
   const abortSession = useSessionStore((s) => s.abortSession);
   const { selectedProvider, selectedModel } = useSettingsStore();
+  const agent = useCurrentAgent();
   const isBusy = status?.type === "busy";
 
   const handleSend = useCallback(
@@ -28,9 +30,9 @@ export function ChatView({ sessionId }: Props) {
         selectedProvider && selectedModel
           ? { providerID: selectedProvider, modelID: selectedModel }
           : undefined;
-      await sendPrompt(sessionId, text, { model });
+      await sendPrompt(sessionId, text, { model, agent });
     },
-    [sessionId, sendPrompt, selectedProvider, selectedModel],
+    [sessionId, sendPrompt, selectedProvider, selectedModel, agent],
   );
 
   const handleAbort = useCallback(() => {

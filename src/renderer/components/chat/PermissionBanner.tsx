@@ -20,12 +20,29 @@ export function PermissionBanner({ sessionId }: Props) {
   // Auto-handle permissions based on mode
   useEffect(() => {
     if (pending.length === 0) return;
-    if (permissionMode === "allow") {
+    if (permissionMode === "bypass") {
       // Auto-approve all
       for (const req of pending) {
         replyPermission(req.id, "always")
           .then(() => removeRequest(req.id))
           .catch(() => {});
+      }
+    } else if (permissionMode === "auto-accept") {
+      // Auto-approve file edits, still ask for bash/dangerous
+      for (const req of pending) {
+        const perm = req.permission.toLowerCase();
+        const isFileOp =
+          perm.includes("edit") ||
+          perm.includes("write") ||
+          perm.includes("read") ||
+          perm.includes("glob") ||
+          perm.includes("grep") ||
+          perm.includes("list");
+        if (isFileOp) {
+          replyPermission(req.id, "always")
+            .then(() => removeRequest(req.id))
+            .catch(() => {});
+        }
       }
     } else if (permissionMode === "plan") {
       // Auto-reject all (plan only)
@@ -37,8 +54,13 @@ export function PermissionBanner({ sessionId }: Props) {
     }
   }, [pending.length, permissionMode]);
 
-  // In allow/plan mode, don't show the banner
-  if (permissionMode !== "ask" || pending.length === 0) return null;
+  // In bypass/plan mode, don't show the banner
+  if (
+    permissionMode === "bypass" ||
+    permissionMode === "plan" ||
+    pending.length === 0
+  )
+    return null;
 
   const handleReply = async (
     req: PermissionRequest,

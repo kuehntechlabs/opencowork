@@ -196,6 +196,14 @@ export interface Model {
   };
 }
 
+export interface AgentInfo {
+  name: string;
+  description: string;
+  mode: "subagent" | "primary" | "all";
+  native: boolean;
+  hidden: boolean;
+}
+
 export interface PermissionRequest {
   id: string;
   sessionID: string;

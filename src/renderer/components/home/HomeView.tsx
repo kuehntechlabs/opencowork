@@ -1,11 +1,10 @@
 import { useState, useCallback } from "react";
 import { FolderPicker } from "./FolderPicker";
-import { ModelSelector } from "./ModelSelector";
-import { PermissionModeSelector } from "./PermissionModeSelector";
 import { MessageInput } from "../input/MessageInput";
 import { useSessionStore } from "../../stores/session-store";
 import { useServerStore } from "../../stores/server-store";
 import { useSettingsStore } from "../../stores/settings-store";
+import { useCurrentAgent } from "../input/ComposerBar";
 
 export function HomeView() {
   const createSession = useSessionStore((s) => s.createSession);
@@ -14,6 +13,7 @@ export function HomeView() {
   const connected = useServerStore((s) => s.connected);
   const { selectedProvider, selectedModel, permissionMode } =
     useSettingsStore();
+  const agent = useCurrentAgent();
   const [sending, setSending] = useState(false);
 
   const handleSend = useCallback(
@@ -21,13 +21,12 @@ export function HomeView() {
       if (!text.trim() || !directory || !connected) return;
       setSending(true);
       try {
-        const action = permissionMode === "allow" ? "allow" : "ask";
+        const action = permissionMode === "bypass" ? "allow" : "ask";
         const session = await createSession(directory, action);
         const model =
           selectedProvider && selectedModel
             ? { providerID: selectedProvider, modelID: selectedModel }
             : undefined;
-        const agent = permissionMode === "plan" ? "plan" : "build";
         await sendPrompt(session.id, text, { model, agent });
       } catch (err) {
         console.error("Failed to create session:", err);
@@ -43,6 +42,7 @@ export function HomeView() {
       selectedProvider,
       selectedModel,
       permissionMode,
+      agent,
     ],
   );
 
@@ -75,17 +75,12 @@ export function HomeView() {
           </div>
           <h1 className="text-2xl font-bold text-text">OpenCowork</h1>
           <p className="text-center text-sm text-text-secondary">
-            AI-powered coding assistant. Choose a folder, select your model, and
-            start coding.
+            Your AI assistant. Pick a folder and let's get to work.
           </p>
         </div>
 
-        {/* Controls */}
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <FolderPicker />
-          <ModelSelector />
-          <PermissionModeSelector />
-        </div>
+        {/* Folder picker */}
+        <FolderPicker />
 
         {/* Status */}
         {!connected && (

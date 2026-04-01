@@ -2,10 +2,11 @@ import { create } from "zustand";
 
 export type Theme = "dark" | "light" | "system";
 // Maps to opencode's native agent system:
-// "allow" = build agent with all permissions auto-approved
-// "ask" = build agent with permission prompts
-// "plan" = plan agent (can only write to plan files)
-export type PermissionMode = "allow" | "ask" | "plan";
+// "ask" = build agent with permission prompts (always ask before making changes)
+// "auto-accept" = build agent, auto-accept file edits (still ask for bash/dangerous)
+// "plan" = plan agent (create a plan before making changes)
+// "bypass" = build agent with ALL permissions auto-approved
+export type PermissionMode = "ask" | "auto-accept" | "plan" | "bypass";
 
 interface SettingsState {
   theme: Theme;
@@ -40,7 +41,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   selectedProvider: null,
   selectedModel: null,
   settingsModalOpen: false,
-  permissionMode: "ask",
+  permissionMode: "ask" as PermissionMode,
 
   setTheme: (theme) => {
     applyTheme(theme);

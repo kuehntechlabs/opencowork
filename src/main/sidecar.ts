@@ -1,4 +1,9 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import {
+  spawn,
+  execFileSync,
+  type ChildProcess,
+} from "node:child_process";
+import { createServer } from "node:net";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -46,14 +51,55 @@ function ensureOpencodeConfig(): void {
   }
 }
 
+/** Try to kill any existing process on the given port */
+function killProcessOnPort(port: number): void {
+  try {
+    const pid = execFileSync("lsof", ["-ti", `tcp:${port}`], {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    if (pid) {
+      log.info(`Killing existing process ${pid} on port ${port}`);
+      process.kill(parseInt(pid, 10), "SIGTERM");
+    }
+  } catch {
+    // No process on port, that's fine
+  }
+}
+
+/** Find a free port starting from the preferred one */
+function findFreePort(preferred: number): Promise<number> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.listen(preferred, "127.0.0.1", () => {
+      server.close(() => resolve(preferred));
+    });
+    server.on("error", () => {
+      // Port busy, try next
+      const server2 = createServer();
+      server2.listen(0, "127.0.0.1", () => {
+        const addr = server2.address();
+        const port = typeof addr === "object" && addr ? addr.port : 0;
+        server2.close(() => resolve(port));
+      });
+    });
+  });
+}
+
 export async function startSidecar(port = 4096): Promise<SidecarInfo> {
   if (sidecar) return sidecar;
 
   ensureOpencodeConfig();
 
-  const args = ["serve", `--hostname=127.0.0.1`, `--port=${port}`];
+  // Try to free the preferred port first
+  killProcessOnPort(port);
+  // Short wait for the port to be released
+  await new Promise((r) => setTimeout(r, 300));
 
-  log.info(`Starting opencode sidecar on port ${port}...`);
+  const actualPort = await findFreePort(port);
+  const args = ["serve", `--hostname=127.0.0.1`, `--port=${actualPort}`];
+
+  log.info(`Starting opencode sidecar on port ${actualPort}...`);
 
   const proc = spawn("opencode", args, {
     env: {
