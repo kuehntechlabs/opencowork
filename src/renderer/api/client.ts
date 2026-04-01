@@ -70,6 +70,16 @@ export async function deleteSession(id: string): Promise<void> {
   await request(`/session/${id}`, { method: "DELETE" });
 }
 
+export async function updateSession(
+  id: string,
+  updates: { title?: string; time?: { archived?: number } },
+): Promise<Session> {
+  return request(`/session/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(updates),
+  });
+}
+
 export async function abortSession(id: string): Promise<void> {
   await request(`/session/${id}/abort`, { method: "POST" });
 }

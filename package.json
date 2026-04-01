@@ -5,7 +5,10 @@
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
+    "ensure-opencode": "which opencode > /dev/null 2>&1 || npm install -g opencode-ai@latest",
+    "predev": "npm run ensure-opencode",
     "dev": "electron-vite dev",
+    "prebuild": "npm run ensure-opencode",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package:mac": "electron-builder --mac --config electron-builder.config.ts",

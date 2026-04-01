@@ -9,29 +9,9 @@ export function RightPanel() {
   const toggleSidebar = useSettingsStore((s) => s.toggleSidebar);
 
   return (
-    <main className="flex h-full flex-1 flex-col bg-surface">
+    <main className="relative flex h-full flex-1 flex-col bg-surface">
       {/* Drag region for macOS */}
-      <div className="drag-region flex h-12 w-full shrink-0 items-center px-4">
-        {!sidebarOpen && (
-          <button
-            onClick={toggleSidebar}
-            className="no-drag rounded-md p-1.5 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
-            title="Show sidebar"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M9 3v18" />
-            </svg>
-          </button>
-        )}
-      </div>
+      <div className="drag-region flex h-12 w-full shrink-0 items-center px-4" />
       <div className="flex flex-1 flex-col overflow-hidden">
         {activeSessionId ? (
           <ChatView sessionId={activeSessionId} />
@@ -39,6 +19,27 @@ export function RightPanel() {
           <HomeView />
         )}
       </div>
+
+      {/* Sidebar re-open button at bottom-left */}
+      {!sidebarOpen && (
+        <button
+          onClick={toggleSidebar}
+          className="no-drag absolute bottom-3 left-3 rounded-md border border-border bg-surface-secondary p-1.5 text-text-tertiary shadow-sm transition-colors hover:bg-surface-hover hover:text-text"
+          title="Show sidebar"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M9 3v18" />
+          </svg>
+        </button>
+      )}
     </main>
   );
 }

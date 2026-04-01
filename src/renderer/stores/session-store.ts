@@ -26,6 +26,8 @@ interface SessionState {
     permissionAction?: "allow" | "ask",
   ) => Promise<Session>;
   deleteSession: (id: string) => Promise<void>;
+  archiveSession: (id: string) => Promise<void>;
+  unarchiveSession: (id: string) => Promise<void>;
   sendPrompt: (
     sessionId: string,
     text: string,
@@ -131,6 +133,23 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
       };
     });
+  },
+
+  archiveSession: async (id) => {
+    const updated = await api.updateSession(id, {
+      time: { archived: Date.now() },
+    });
+    set((s) => ({
+      sessions: { ...s.sessions, [id]: updated },
+      activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
+    }));
+  },
+
+  unarchiveSession: async (id) => {
+    const updated = await api.updateSession(id, { time: { archived: 0 } });
+    set((s) => ({
+      sessions: { ...s.sessions, [id]: updated },
+    }));
   },
 
   sendPrompt: async (sessionId, text, options) => {

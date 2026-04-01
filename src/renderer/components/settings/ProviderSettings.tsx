@@ -55,6 +55,26 @@ export function ProviderSettings({ onClose }: Props) {
   const [authError, setAuthError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // ESC key: close connect panel or go back from connect form
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (connectingProvider) {
+          e.stopPropagation();
+          setConnectingProvider(null);
+          setAuthInputs({});
+          setAuthError(null);
+        } else if (showConnect) {
+          e.stopPropagation();
+          setShowConnect(false);
+          setConnectSearch("");
+        }
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [showConnect, connectingProvider]);
+
   const refresh = () => {
     if (!connected) return;
     setLoading(true);
@@ -97,24 +117,49 @@ export function ProviderSettings({ onClose }: Props) {
     return { popular, other };
   }, [providers, connectedIds, connectSearch]);
 
-  const handleConnect = async (providerId: string, methodIndex: number) => {
+  const handleConnect = async (
+    providerId: string,
+    methodIndex: number,
+    method: AuthMethod,
+  ) => {
     setSaving(true);
     setAuthError(null);
     try {
-      const res = await fetch(
-        `${getBaseUrl()}/provider/${providerId}/oauth/authorize`,
-        {
-          method: "POST",
+      if (method.type === "api") {
+        // For API key auth, use PUT /auth/:providerID directly
+        const keyValue =
+          authInputs["key"] || authInputs["apiKey"] || authInputs["api_key"];
+        if (!keyValue) {
+          setAuthError("API key is required");
+          setSaving(false);
+          return;
+        }
+        const res = await fetch(`${getBaseUrl()}/auth/${providerId}`, {
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ method: methodIndex, inputs: authInputs }),
-        },
-      );
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `Failed (${res.status})`);
+          body: JSON.stringify({ type: "api", key: keyValue }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Failed (${res.status})`);
+        }
+      } else {
+        // OAuth flow
+        const res = await fetch(
+          `${getBaseUrl()}/provider/${providerId}/oauth/authorize`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ method: methodIndex, inputs: authInputs }),
+          },
+        );
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Failed (${res.status})`);
+        }
+        const data = await res.json();
+        if (data?.url) window.open(data.url, "_blank");
       }
-      const data = await res.json();
-      if (data?.url) window.open(data.url, "_blank");
 
       // Refresh
       refresh();
@@ -245,7 +290,11 @@ export function ProviderSettings({ onClose }: Props) {
                 providers.find((p) => p.id === connectingProvider)?.name ??
                 connectingProvider
               }
-              methods={authMethods[connectingProvider] ?? []}
+              methods={
+                authMethods[connectingProvider]?.length
+                  ? authMethods[connectingProvider]
+                  : [{ type: "api" as const, label: "API key" }]
+              }
               inputs={authInputs}
               setInputs={setAuthInputs}
               error={authError}
@@ -298,12 +347,7 @@ export function ProviderSettings({ onClose }: Props) {
                       <ProviderRow
                         key={p.id}
                         provider={p}
-                        hasAuth={!!authMethods[p.id]?.length}
-                        onClick={() => {
-                          if (authMethods[p.id]?.length) {
-                            setConnectingProvider(p.id);
-                          }
-                        }}
+                        onClick={() => setConnectingProvider(p.id)}
                       />
                     ))}
                   </>
@@ -317,12 +361,7 @@ export function ProviderSettings({ onClose }: Props) {
                       <ProviderRow
                         key={p.id}
                         provider={p}
-                        hasAuth={!!authMethods[p.id]?.length}
-                        onClick={() => {
-                          if (authMethods[p.id]?.length) {
-                            setConnectingProvider(p.id);
-                          }
-                        }}
+                        onClick={() => setConnectingProvider(p.id)}
                       />
                     ))}
                   </>
@@ -354,27 +393,17 @@ export function ProviderSettings({ onClose }: Props) {
 
 function ProviderRow({
   provider,
-  hasAuth,
   onClick,
 }: {
   provider: Provider;
-  hasAuth: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      disabled={!hasAuth}
-      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
-        hasAuth
-          ? "text-text hover:bg-surface-hover"
-          : "cursor-default text-text-tertiary"
-      }`}
+      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text transition-colors hover:bg-surface-hover"
     >
       <span className="flex-1">{provider.name || provider.id}</span>
-      {!hasAuth && (
-        <span className="text-[10px] text-text-tertiary">env var</span>
-      )}
     </button>
   );
 }
@@ -397,12 +426,19 @@ function ConnectForm({
   setInputs: (inputs: Record<string, string>) => void;
   error: string | null;
   saving: boolean;
-  onConnect: (providerId: string, methodIndex: number) => void;
+  onConnect: (
+    providerId: string,
+    methodIndex: number,
+    method: AuthMethod,
+  ) => void;
   onCancel: () => void;
 }) {
   const [selectedMethod, setSelectedMethod] = useState(0);
   const method = methods[selectedMethod];
   if (!method) return null;
+
+  const isApiKeyOnly =
+    method.type === "api" && (!method.prompts || method.prompts.length === 0);
 
   // Filter prompts by `when` conditions
   const visiblePrompts = (method.prompts ?? []).filter((prompt) => {
@@ -448,8 +484,25 @@ function ConnectForm({
       )}
 
       {/* Single method label */}
-      {methods.length === 1 && (
+      {methods.length === 1 && !isApiKeyOnly && (
         <p className="mb-3 text-xs text-text-tertiary">{method.label}</p>
+      )}
+
+      {/* API key input for providers without explicit prompts */}
+      {isApiKeyOnly && (
+        <div className="mb-3">
+          <label className="mb-1 block text-xs text-text-tertiary">
+            API key
+          </label>
+          <input
+            type="password"
+            value={inputs["key"] ?? ""}
+            onChange={(e) => setInputs({ ...inputs, key: e.target.value })}
+            placeholder="Paste your API key"
+            autoFocus
+            className="w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none"
+          />
+        </div>
       )}
 
       {/* Prompts */}
@@ -494,8 +547,8 @@ function ConnectForm({
         </div>
       ))}
 
-      {/* No prompts = OAuth or simple connect */}
-      {visiblePrompts.length === 0 && (
+      {/* No prompts and not API key = OAuth */}
+      {visiblePrompts.length === 0 && !isApiKeyOnly && (
         <p className="mb-3 text-xs text-text-tertiary">
           {method.type === "oauth"
             ? "Click connect to authenticate via browser"
@@ -506,7 +559,7 @@ function ConnectForm({
       {error && <p className="mb-3 text-xs text-red-400">{error}</p>}
 
       <button
-        onClick={() => onConnect(providerId, selectedMethod)}
+        onClick={() => onConnect(providerId, selectedMethod, method)}
         disabled={saving}
         className="flex w-full items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm text-accent-text hover:bg-accent/80 disabled:opacity-50"
       >

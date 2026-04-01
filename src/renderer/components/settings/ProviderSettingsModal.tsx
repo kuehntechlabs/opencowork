@@ -1,9 +1,22 @@
+import { useEffect } from "react";
 import { useSettingsStore } from "../../stores/settings-store";
 import { ProviderSettings } from "./ProviderSettings";
 
 export function ProviderSettingsModal() {
   const open = useSettingsStore((s) => s.settingsModalOpen);
   const close = () => useSettingsStore.getState().setSettingsModalOpen(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        close();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open]);
 
   if (!open) return null;
 
