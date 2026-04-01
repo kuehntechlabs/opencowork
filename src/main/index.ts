@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from "electron";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -34,6 +34,7 @@ function createWindow() {
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: { x: 16, y: 16 },
     backgroundColor: "#0f0f0f",
+    icon: join(__dirname, "../../resources/icons/icon.png"),
     show: false,
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),
@@ -202,6 +203,14 @@ if (!gotSingleInstanceLock) {
   });
 
   app.whenReady().then(async () => {
+    // Set dock icon (needed for dev mode on macOS)
+    if (process.platform === "darwin" && app.dock) {
+      const iconPath = join(__dirname, "../../resources/icons/icon.png");
+      if (existsSync(iconPath)) {
+        app.dock.setIcon(nativeImage.createFromPath(iconPath));
+      }
+    }
+
     try {
       await startSidecar();
     } catch (err) {

@@ -1,0 +1,47 @@
+{
+  "fill" : {
+    "solid" : "srgb:0.06042,0.06042,0.06042,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "blend-mode" : "darken",
+          "fill" : {
+            "linear-gradient" : [
+              "srgb:0.23894,0.25073,0.40017,1.00000",
+              "srgb:0.50475,0.54872,0.97165,1.00000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0.43842213114754097,
+                "y" : 0.7004295822102425
+              },
+              "stop" : {
+                "x" : 0.8745645491803279,
+                "y" : 0.12560015161725066
+              }
+            }
+          },
+          "glass" : false,
+          "image-name" : "lamp icon.png",
+          "name" : "lamp icon"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

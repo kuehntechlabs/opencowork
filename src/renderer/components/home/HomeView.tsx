@@ -5,6 +5,7 @@ import { useSessionStore } from "../../stores/session-store";
 import { useServerStore } from "../../stores/server-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useCurrentAgent } from "../input/ComposerBar";
+import lampIconUrl from "../../assets/lamp-icon.png";
 
 export function HomeView() {
   const createSession = useSessionStore((s) => s.createSession);
@@ -52,26 +53,20 @@ export function HomeView() {
         {/* Logo / Title */}
         <div className="flex flex-col items-center gap-3">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10">
-            <svg
-              width="32"
-              height="32"
-              viewBox="0 0 24 24"
-              fill="none"
-              className="text-accent"
-            >
-              <path
-                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"
-                fill="currentColor"
-                opacity="0.2"
-              />
-              <path
-                d="M8 12l3 3 5-5"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <div
+              className="h-11 w-11"
+              style={{
+                WebkitMaskImage: `url(${lampIconUrl})`,
+                WebkitMaskSize: "contain",
+                WebkitMaskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskImage: `url(${lampIconUrl})`,
+                maskSize: "contain",
+                maskRepeat: "no-repeat",
+                maskPosition: "center",
+                background: "linear-gradient(135deg, #3D4066 0%, #818CF9 100%)",
+              }}
+            />
           </div>
           <h1 className="text-2xl font-bold text-text">OpenCowork</h1>
           <p className="text-center text-sm text-text-secondary">
