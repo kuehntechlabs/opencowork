@@ -1,0 +1,62 @@
+import { create } from "zustand";
+
+export type Theme = "dark" | "light" | "system";
+
+interface SettingsState {
+  theme: Theme;
+  sidebarOpen: boolean;
+  selectedProvider: string | null;
+  selectedModel: string | null;
+
+  setTheme: (theme: Theme) => void;
+  toggleSidebar: () => void;
+  setSidebarOpen: (open: boolean) => void;
+  setSelectedModel: (provider: string, model: string) => void;
+}
+
+function getSystemTheme(): "dark" | "light" {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+function applyTheme(theme: Theme) {
+  const resolved = theme === "system" ? getSystemTheme() : theme;
+  document.documentElement.classList.toggle("dark", resolved === "dark");
+}
+
+export const useSettingsStore = create<SettingsState>((set, get) => ({
+  theme: "dark",
+  sidebarOpen: true,
+  selectedProvider: null,
+  selectedModel: null,
+
+  setTheme: (theme) => {
+    applyTheme(theme);
+    localStorage.setItem("opencowork-theme", theme);
+    set({ theme });
+  },
+
+  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+
+  setSelectedModel: (provider, model) => {
+    localStorage.setItem("opencowork-provider", provider);
+    localStorage.setItem("opencowork-model", model);
+    set({ selectedProvider: provider, selectedModel: model });
+  },
+}));
+
+// Initialize from localStorage
+const savedTheme = localStorage.getItem("opencowork-theme") as Theme | null;
+if (savedTheme) {
+  useSettingsStore.getState().setTheme(savedTheme);
+}
+const savedProvider = localStorage.getItem("opencowork-provider");
+const savedModel = localStorage.getItem("opencowork-model");
+if (savedProvider && savedModel) {
+  useSettingsStore.setState({
+    selectedProvider: savedProvider,
+    selectedModel: savedModel,
+  });
+}
