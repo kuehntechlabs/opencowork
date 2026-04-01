@@ -197,6 +197,28 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   applyDelta: (sessionId, messageId, partId, field, delta) =>
     set((s) => {
       const msgParts = s.parts[messageId] || [];
+      const existing = msgParts.find((p) => p.id === partId);
+
+      if (!existing) {
+        // Part doesn't exist yet — create a placeholder text part
+        if (field === "text") {
+          const newPart = {
+            id: partId,
+            sessionID: sessionId,
+            messageID: messageId,
+            type: "text" as const,
+            text: delta,
+          };
+          return {
+            parts: {
+              ...s.parts,
+              [messageId]: [...msgParts, newPart],
+            },
+          };
+        }
+        return {};
+      }
+
       return {
         parts: {
           ...s.parts,

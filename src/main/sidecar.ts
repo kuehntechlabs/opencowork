@@ -12,10 +12,10 @@ export interface SidecarInfo {
 
 let sidecar: SidecarInfo | null = null;
 
-function ensureOpencodeConfig(): void {
-  const configDir = join(homedir(), ".config", "opencode");
-  const configPath = join(configDir, "config.json");
+const configDir = join(homedir(), ".config", "opencode");
+const configPath = join(configDir, "config.json");
 
+function ensureOpencodeConfig(): void {
   const desiredConfig = {
     mcp: {
       gitnexus: {
@@ -127,4 +127,36 @@ export function stopSidecar(): Promise<void> {
 
 export function getSidecarUrl(): string | null {
   return sidecar?.url ?? null;
+}
+
+export function readOpencodeConfig(): Record<string, unknown> {
+  try {
+    if (existsSync(configPath)) {
+      return JSON.parse(readFileSync(configPath, "utf-8"));
+    }
+  } catch (err) {
+    log.warn("Failed to read opencode config:", err);
+  }
+  return {};
+}
+
+export function writeProviderConfig(
+  providerConfig: Record<string, unknown>,
+): void {
+  const existing = readOpencodeConfig();
+  existing.provider = providerConfig;
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(configPath, JSON.stringify(existing, null, 2) + "\n");
+  log.info("Updated opencode provider config");
+}
+
+export async function restartSidecar(): Promise<string | null> {
+  await stopSidecar();
+  try {
+    const info = await startSidecar();
+    return info.url;
+  } catch (err) {
+    log.error("Failed to restart sidecar:", err);
+    return null;
+  }
 }

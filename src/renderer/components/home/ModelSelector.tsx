@@ -3,6 +3,8 @@ import { useSettingsStore } from "../../stores/settings-store";
 import { listProviders } from "../../api/client";
 import type { Provider } from "../../api/types";
 import { useServerStore } from "../../stores/server-store";
+const openSettings = () =>
+  useSettingsStore.getState().setSettingsModalOpen(true);
 
 export function ModelSelector() {
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -58,8 +60,19 @@ export function ModelSelector() {
       {open && (
         <div className="absolute bottom-full left-0 z-50 mb-2 max-h-64 w-72 overflow-y-auto rounded-lg border border-border bg-surface-secondary shadow-lg">
           {providers.length === 0 ? (
-            <div className="p-3 text-sm text-text-tertiary">
-              No providers available
+            <div className="flex flex-col gap-2 p-3">
+              <span className="text-sm text-text-tertiary">
+                No providers configured
+              </span>
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  openSettings();
+                }}
+                className="text-sm text-accent hover:underline"
+              >
+                Configure providers...
+              </button>
             </div>
           ) : (
             providers.map((provider) => {

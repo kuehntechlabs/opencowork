@@ -14,6 +14,12 @@ const api = {
     ipcRenderer.on("menu-command", handler);
     return () => ipcRenderer.removeListener("menu-command", handler);
   },
+  readProviderConfig: (): Promise<Record<string, unknown>> =>
+    ipcRenderer.invoke("read-provider-config"),
+  writeProviderConfig: (config: Record<string, unknown>): Promise<void> =>
+    ipcRenderer.invoke("write-provider-config", config),
+  restartSidecar: (): Promise<string | null> =>
+    ipcRenderer.invoke("restart-sidecar"),
 };
 
 contextBridge.exposeInMainWorld("api", api);

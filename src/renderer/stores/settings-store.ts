@@ -7,11 +7,13 @@ interface SettingsState {
   sidebarOpen: boolean;
   selectedProvider: string | null;
   selectedModel: string | null;
+  settingsModalOpen: boolean;
 
   setTheme: (theme: Theme) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   setSelectedModel: (provider: string, model: string) => void;
+  setSettingsModalOpen: (open: boolean) => void;
 }
 
 function getSystemTheme(): "dark" | "light" {
@@ -30,6 +32,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   sidebarOpen: true,
   selectedProvider: null,
   selectedModel: null,
+  settingsModalOpen: false,
 
   setTheme: (theme) => {
     applyTheme(theme);
@@ -39,6 +42,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
+  setSettingsModalOpen: (open) => set({ settingsModalOpen: open }),
 
   setSelectedModel: (provider, model) => {
     localStorage.setItem("opencowork-provider", provider);

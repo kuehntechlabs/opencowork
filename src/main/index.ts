@@ -1,7 +1,14 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import { join } from "node:path";
 import log from "electron-log";
-import { startSidecar, stopSidecar, getSidecarUrl } from "./sidecar";
+import {
+  startSidecar,
+  stopSidecar,
+  getSidecarUrl,
+  readOpencodeConfig,
+  writeProviderConfig,
+  restartSidecar,
+} from "./sidecar";
 import { createMenu } from "./menu";
 
 let mainWindow: BrowserWindow | null = null;
@@ -61,6 +68,17 @@ ipcMain.handle("show-notification", (_event, title: string, body: string) => {
 });
 
 ipcMain.handle("get-platform", () => process.platform);
+
+ipcMain.handle("read-provider-config", () => readOpencodeConfig());
+ipcMain.handle(
+  "write-provider-config",
+  (_event, providerConfig: Record<string, unknown>) =>
+    writeProviderConfig(providerConfig),
+);
+ipcMain.handle("restart-sidecar", async () => {
+  const url = await restartSidecar();
+  return url;
+});
 
 // App lifecycle
 const gotSingleInstanceLock = app.requestSingleInstanceLock();

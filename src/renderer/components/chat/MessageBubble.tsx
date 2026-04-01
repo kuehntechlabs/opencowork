@@ -39,13 +39,46 @@ export function MessageBubble({ message }: Props) {
               );
             case "tool":
               return <ToolCallBlock key={part.id} part={part} />;
+            case "step-start":
+              return null;
+            case "step-finish":
+              return (
+                <div
+                  key={part.id}
+                  className="my-1 flex items-center gap-2 text-[10px] text-text-tertiary"
+                >
+                  <span>{part.tokens.input + part.tokens.output} tokens</span>
+                  {part.cost > 0 && <span>${part.cost.toFixed(4)}</span>}
+                </div>
+              );
+            case "file":
+              return (
+                <div
+                  key={part.id}
+                  className="my-1 flex items-center gap-1.5 rounded border border-border/40 bg-surface-tertiary/20 px-2 py-1 text-xs text-text-secondary"
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                  {part.filename || "file"}
+                </div>
+              );
             default:
               return null;
           }
         })}
 
-        {/* Assistant metadata */}
+        {/* Assistant metadata (only if no step-finish parts already show this) */}
         {message.role === "assistant" &&
+          !parts.some((p) => p.type === "step-finish") &&
           (() => {
             const msg = message as AssistantMessage;
             return msg.tokens ? (
