@@ -114,13 +114,12 @@ export async function listProviders(directory?: string): Promise<{
   return request("/provider", {}, directory);
 }
 
-// Permission API
+// Permission API — POST /permission/:requestID/reply
 export async function replyPermission(
-  sessionId: string,
   requestId: string,
   reply: "once" | "always" | "reject",
 ): Promise<void> {
-  await request(`/session/${sessionId}/permission/${requestId}`, {
+  await request(`/permission/${requestId}/reply`, {
     method: "POST",
     body: JSON.stringify({ reply }),
   });

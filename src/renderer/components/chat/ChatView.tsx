@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "../input/MessageInput";
+import { PermissionBanner } from "./PermissionBanner";
 import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { Spinner } from "../common/Spinner";
@@ -60,6 +61,9 @@ export function ChatView({ sessionId }: Props) {
           </div>
         )}
       </div>
+
+      {/* Permission requests */}
+      <PermissionBanner sessionId={sessionId} />
 
       {/* Input */}
       <div className="border-t border-border p-4">

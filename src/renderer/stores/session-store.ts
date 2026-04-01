@@ -60,7 +60,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   setActiveSession: (id) => {
     set({ activeSessionId: id });
-    if (id && !get().messages[id]) {
+    if (id) {
       get().loadMessages(id);
     }
   },
@@ -82,14 +82,19 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   loadMessages: async (sessionId) => {
     try {
       // API returns { info: Message, parts: Part[] }[]
-      const withParts = await api.getMessages(sessionId);
+      const response = await api.getMessages(sessionId);
+      // Handle both array and object responses
+      const withParts = Array.isArray(response) ? response : [];
       const msgs: Message[] = [];
       const allParts: Record<string, Part[]> = {};
 
       for (const item of withParts) {
-        msgs.push(item.info);
-        if (item.parts?.length) {
-          allParts[item.info.id] = item.parts;
+        // Handle both { info, parts } and flat message formats
+        const msg = item.info ?? item;
+        const parts = item.parts ?? [];
+        msgs.push(msg);
+        if (parts.length) {
+          allParts[msg.id] = parts;
         }
       }
 
@@ -97,8 +102,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         messages: { ...s.messages, [sessionId]: msgs },
         parts: { ...s.parts, ...allParts },
       }));
-    } catch {
-      // ignore message loading errors
+    } catch (err) {
+      console.error("Failed to load messages for session", sessionId, err);
     }
   },
 
