@@ -48,12 +48,19 @@ export async function getSession(id: string): Promise<Session> {
   return request(`/session/${id}`);
 }
 
-export async function createSession(directory: string): Promise<Session> {
+export async function createSession(
+  directory: string,
+  permissionAction: "allow" | "ask" = "ask",
+): Promise<Session> {
+  const permission =
+    permissionAction === "allow"
+      ? [{ permission: "*", pattern: "*", action: "allow" as const }]
+      : undefined;
   return request(
     "/session",
     {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify({ permission }),
     },
     directory,
   );

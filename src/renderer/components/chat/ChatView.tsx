@@ -28,7 +28,7 @@ export function ChatView({ sessionId }: Props) {
         selectedProvider && selectedModel
           ? { providerID: selectedProvider, modelID: selectedModel }
           : undefined;
-      await sendPrompt(sessionId, text, model);
+      await sendPrompt(sessionId, text, { model });
     },
     [sessionId, sendPrompt, selectedProvider, selectedModel],
   );

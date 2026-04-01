@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { FolderPicker } from "./FolderPicker";
 import { ModelSelector } from "./ModelSelector";
+import { PermissionModeSelector } from "./PermissionModeSelector";
 import { MessageInput } from "../input/MessageInput";
 import { useSessionStore } from "../../stores/session-store";
 import { useServerStore } from "../../stores/server-store";
@@ -11,7 +12,8 @@ export function HomeView() {
   const sendPrompt = useSessionStore((s) => s.sendPrompt);
   const directory = useServerStore((s) => s.directory);
   const connected = useServerStore((s) => s.connected);
-  const { selectedProvider, selectedModel } = useSettingsStore();
+  const { selectedProvider, selectedModel, permissionMode } =
+    useSettingsStore();
   const [sending, setSending] = useState(false);
 
   const handleSend = useCallback(
@@ -19,12 +21,14 @@ export function HomeView() {
       if (!text.trim() || !directory || !connected) return;
       setSending(true);
       try {
-        const session = await createSession(directory);
+        const action = permissionMode === "allow" ? "allow" : "ask";
+        const session = await createSession(directory, action);
         const model =
           selectedProvider && selectedModel
             ? { providerID: selectedProvider, modelID: selectedModel }
             : undefined;
-        await sendPrompt(session.id, text, model);
+        const agent = permissionMode === "plan" ? "plan" : "build";
+        await sendPrompt(session.id, text, { model, agent });
       } catch (err) {
         console.error("Failed to create session:", err);
       } finally {
@@ -38,6 +42,7 @@ export function HomeView() {
       sendPrompt,
       selectedProvider,
       selectedModel,
+      permissionMode,
     ],
   );
 
@@ -79,6 +84,7 @@ export function HomeView() {
         <div className="flex flex-wrap items-center justify-center gap-3">
           <FolderPicker />
           <ModelSelector />
+          <PermissionModeSelector />
         </div>
 
         {/* Status */}

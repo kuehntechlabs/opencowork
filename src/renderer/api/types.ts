@@ -185,6 +185,15 @@ export interface Provider {
 export interface Model {
   id: string;
   name: string;
+  cost?: {
+    input: number;
+    output: number;
+  };
+  status?: "alpha" | "beta" | "deprecated" | "active";
+  capabilities?: {
+    reasoning?: boolean;
+    toolcall?: boolean;
+  };
 }
 
 export interface PermissionRequest {

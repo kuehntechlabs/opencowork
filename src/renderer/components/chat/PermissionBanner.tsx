@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { useSessionStore } from "../../stores/session-store";
+import { useSettingsStore } from "../../stores/settings-store";
 import { replyPermission } from "../../api/client";
 import type { PermissionRequest } from "../../api/types";
 
@@ -9,12 +11,34 @@ interface Props {
 export function PermissionBanner({ sessionId }: Props) {
   const requests = useSessionStore((s) => s.permissionRequests);
   const removeRequest = useSessionStore((s) => s.removePermissionRequest);
+  const permissionMode = useSettingsStore((s) => s.permissionMode);
 
   const pending = Object.values(requests).filter(
     (r) => r.sessionID === sessionId,
   );
 
-  if (pending.length === 0) return null;
+  // Auto-handle permissions based on mode
+  useEffect(() => {
+    if (pending.length === 0) return;
+    if (permissionMode === "allow") {
+      // Auto-approve all
+      for (const req of pending) {
+        replyPermission(req.id, "always")
+          .then(() => removeRequest(req.id))
+          .catch(() => {});
+      }
+    } else if (permissionMode === "plan") {
+      // Auto-reject all (plan only)
+      for (const req of pending) {
+        replyPermission(req.id, "reject")
+          .then(() => removeRequest(req.id))
+          .catch(() => {});
+      }
+    }
+  }, [pending.length, permissionMode]);
+
+  // In allow/plan mode, don't show the banner
+  if (permissionMode !== "ask" || pending.length === 0) return null;
 
   const handleReply = async (
     req: PermissionRequest,

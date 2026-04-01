@@ -21,12 +21,18 @@ interface SessionState {
   setActiveSession: (id: string | null) => void;
   loadSessions: (directory?: string) => Promise<void>;
   loadMessages: (sessionId: string) => Promise<void>;
-  createSession: (directory: string) => Promise<Session>;
+  createSession: (
+    directory: string,
+    permissionAction?: "allow" | "ask",
+  ) => Promise<Session>;
   deleteSession: (id: string) => Promise<void>;
   sendPrompt: (
     sessionId: string,
     text: string,
-    model?: { providerID: string; modelID: string },
+    options?: {
+      model?: { providerID: string; modelID: string };
+      agent?: string;
+    },
   ) => Promise<void>;
   abortSession: (id: string) => Promise<void>;
 
@@ -107,8 +113,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
-  createSession: async (directory) => {
-    const session = await api.createSession(directory);
+  createSession: async (directory, permissionAction) => {
+    const session = await api.createSession(directory, permissionAction);
     set((s) => ({
       sessions: { ...s.sessions, [session.id]: session },
       activeSessionId: session.id,
@@ -127,12 +133,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     });
   },
 
-  sendPrompt: async (sessionId, text, model) => {
-    await api.sendPrompt(
-      sessionId,
-      [{ type: "text", text }],
-      model ? { model } : undefined,
-    );
+  sendPrompt: async (sessionId, text, options) => {
+    await api.sendPrompt(sessionId, [{ type: "text", text }], options);
   },
 
   abortSession: async (id) => {
