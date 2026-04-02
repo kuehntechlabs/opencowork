@@ -1,4 +1,11 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  shell,
+  nativeImage,
+} from "electron";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -137,7 +144,8 @@ ipcMain.handle(
     }
     if (opts.filePaths) {
       for (const src of opts.filePaths) {
-        const fileName = src.split("/").pop() || src.split("\\").pop() || "file";
+        const fileName =
+          src.split("/").pop() || src.split("\\").pop() || "file";
         copyFileSync(src, join(projectDir, fileName));
       }
     }
@@ -188,6 +196,86 @@ ipcMain.handle("add-recent-directory", (_event, dirPath: string) => {
   recent.unshift({ path: dirPath, lastUsed: Date.now() });
   appStore.set("recentDirectories", recent.slice(0, 10));
 });
+
+// Skill directory file listing
+ipcMain.handle(
+  "list-skill-files",
+  (_event, dirPath: string): { name: string; type: "file" | "directory" }[] => {
+    try {
+      if (!existsSync(dirPath)) return [];
+      const entries = readdirSync(dirPath, { withFileTypes: true });
+      return entries
+        .filter((e) => !e.name.startsWith("."))
+        .map((e) => ({
+          name: e.name,
+          type: e.isDirectory() ? ("directory" as const) : ("file" as const),
+        }))
+        .sort((a, b) => {
+          // Directories first, then files
+          if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+    } catch (err) {
+      log.warn("Failed to list skill files:", err);
+      return [];
+    }
+  },
+);
+
+// Read file contents — text or binary (as base64 data URL)
+const IMAGE_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".svg",
+  ".ico",
+  ".bmp",
+]);
+const MIME_MAP: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".bmp": "image/bmp",
+};
+
+ipcMain.handle(
+  "read-skill-file",
+  (
+    _event,
+    filePath: string,
+  ): { type: "text" | "image"; content: string } | null => {
+    try {
+      if (!existsSync(filePath)) return null;
+      const ext = filePath.slice(filePath.lastIndexOf(".")).toLowerCase();
+      if (IMAGE_EXTENSIONS.has(ext)) {
+        const data = readFileSync(filePath);
+        const mime = MIME_MAP[ext] || "application/octet-stream";
+        return {
+          type: "image",
+          content: `data:${mime};base64,${data.toString("base64")}`,
+        };
+      }
+      // Text file — cap at 500KB to avoid UI freeze
+      const stat = statSync(filePath);
+      if (stat.size > 512 * 1024) {
+        return {
+          type: "text",
+          content: `[File too large: ${(stat.size / 1024).toFixed(0)} KB]`,
+        };
+      }
+      return { type: "text", content: readFileSync(filePath, "utf-8") };
+    } catch (err) {
+      log.warn("Failed to read skill file:", err);
+      return null;
+    }
+  },
+);
 
 // App lifecycle
 const gotSingleInstanceLock = app.requestSingleInstanceLock();

@@ -44,11 +44,20 @@ const api = {
     ipcRenderer.invoke("delete-project", name),
   openFilePicker: (): Promise<string[]> =>
     ipcRenderer.invoke("open-file-picker"),
-  getRecentDirectories: (): Promise<
-    { path: string; lastUsed: number }[]
-  > => ipcRenderer.invoke("get-recent-directories"),
+  getRecentDirectories: (): Promise<{ path: string; lastUsed: number }[]> =>
+    ipcRenderer.invoke("get-recent-directories"),
   addRecentDirectory: (path: string): Promise<void> =>
     ipcRenderer.invoke("add-recent-directory", path),
+
+  // Skills
+  listSkillFiles: (
+    dirPath: string,
+  ): Promise<{ name: string; type: "file" | "directory" }[]> =>
+    ipcRenderer.invoke("list-skill-files", dirPath),
+  readSkillFile: (
+    filePath: string,
+  ): Promise<{ type: "text" | "image"; content: string } | null> =>
+    ipcRenderer.invoke("read-skill-file", filePath),
 };
 
 contextBridge.exposeInMainWorld("api", api);

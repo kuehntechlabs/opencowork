@@ -13,11 +13,18 @@ export function RightPanel() {
   const setRightPanelPage = useSettingsStore((s) => s.setRightPanelPage);
 
   const renderContent = () => {
-    if (rightPanelPage) {
+    if (rightPanelPage === "customize") {
       return (
-        <div className="flex flex-1 flex-col overflow-y-auto bg-white dark:bg-[#1a1a1a]">
+        <div className="flex flex-1 flex-col overflow-hidden bg-white dark:bg-[#1a1a1a]">
+          <CustomizePage />
+        </div>
+      );
+    }
+    if (rightPanelPage === "projects") {
+      return (
+        <div className="flex flex-1 flex-col overflow-hidden bg-white dark:bg-[#1a1a1a]">
           {/* Close button */}
-          <div className="flex justify-end px-4 pt-2">
+          <div className="flex shrink-0 justify-end px-4 pt-2">
             <button
               onClick={() => setRightPanelPage(null)}
               className="rounded-md p-1.5 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
@@ -36,8 +43,9 @@ export function RightPanel() {
               </svg>
             </button>
           </div>
-          {rightPanelPage === "projects" && <ProjectsPage />}
-          {rightPanelPage === "customize" && <CustomizePage />}
+          <div className="flex-1 overflow-y-auto">
+            <ProjectsPage />
+          </div>
         </div>
       );
     }
@@ -47,10 +55,14 @@ export function RightPanel() {
     return <HomeView />;
   };
 
+  const isFullHeight = rightPanelPage === "customize";
+
   return (
     <main className="relative flex h-full flex-1 flex-col bg-surface">
-      {/* Drag region for macOS */}
-      <div className="drag-region flex h-12 w-full shrink-0 items-center px-4" />
+      {/* Drag region for macOS — hidden when page needs full height */}
+      {!isFullHeight && (
+        <div className="drag-region flex h-12 w-full shrink-0 items-center px-4" />
+      )}
       <div className="flex flex-1 flex-col overflow-hidden">
         {renderContent()}
       </div>

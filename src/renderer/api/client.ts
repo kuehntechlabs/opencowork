@@ -214,6 +214,22 @@ export async function executeCommand(
   });
 }
 
+// Skill API — lists all available skills with their info
+export interface SkillInfo {
+  name: string;
+  description: string;
+  location: string;
+  content: string;
+}
+
+export async function listSkills(): Promise<SkillInfo[]> {
+  try {
+    return await request<SkillInfo[]>("/skill");
+  } catch {
+    return [];
+  }
+}
+
 // Health check
 export async function checkHealth(): Promise<boolean> {
   try {
