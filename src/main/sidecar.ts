@@ -1,8 +1,4 @@
-import {
-  spawn,
-  execFileSync,
-  type ChildProcess,
-} from "node:child_process";
+import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -194,6 +190,14 @@ export function writeProviderConfig(
   mkdirSync(configDir, { recursive: true });
   writeFileSync(configPath, JSON.stringify(existing, null, 2) + "\n");
   log.info("Updated opencode provider config");
+}
+
+export function writeMCPConfig(mcpConfig: Record<string, unknown>): void {
+  const existing = readOpencodeConfig();
+  existing.mcp = mcpConfig;
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(configPath, JSON.stringify(existing, null, 2) + "\n");
+  log.info("Updated opencode MCP config");
 }
 
 export async function restartSidecar(): Promise<string | null> {

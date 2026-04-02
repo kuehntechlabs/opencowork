@@ -4,6 +4,8 @@ import { HomeView } from "../home/HomeView";
 import { ChatView } from "../chat/ChatView";
 import { ProjectsPage } from "../pages/ProjectsPage";
 import { CustomizePage } from "../pages/CustomizePage";
+import { DirectoryPage } from "../pages/DirectoryPage";
+import { useDirectoryInstall } from "../../hooks/useDirectoryInstall";
 
 export function RightPanel() {
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
@@ -12,7 +14,20 @@ export function RightPanel() {
   const rightPanelPage = useSettingsStore((s) => s.rightPanelPage);
   const setRightPanelPage = useSettingsStore((s) => s.setRightPanelPage);
 
+  const { installedNames, handleInstall } = useDirectoryInstall();
+
   const renderContent = () => {
+    if (rightPanelPage === "directory") {
+      return (
+        <div className="flex flex-1 flex-col overflow-hidden bg-white dark:bg-[#1a1a1a]">
+          <DirectoryPage
+            onClose={() => setRightPanelPage("customize")}
+            onInstall={handleInstall}
+            installedNames={installedNames}
+          />
+        </div>
+      );
+    }
     if (rightPanelPage === "customize") {
       return (
         <div className="flex flex-1 flex-col overflow-hidden bg-white dark:bg-[#1a1a1a]">
@@ -55,7 +70,8 @@ export function RightPanel() {
     return <HomeView />;
   };
 
-  const isFullHeight = rightPanelPage === "customize";
+  const isFullHeight =
+    rightPanelPage === "customize" || rightPanelPage === "directory";
 
   return (
     <main className="relative flex h-full flex-1 flex-col bg-surface">

@@ -26,8 +26,10 @@ import {
   getSidecarUrl,
   readOpencodeConfig,
   writeProviderConfig,
+  writeMCPConfig,
   restartSidecar,
 } from "./sidecar";
+import { listMCPServers, clearMCPCache } from "./mcp-inspect";
 import { createMenu } from "./menu";
 
 let mainWindow: BrowserWindow | null = null;
@@ -98,6 +100,19 @@ ipcMain.handle(
 ipcMain.handle("restart-sidecar", async () => {
   const url = await restartSidecar();
   return url;
+});
+
+// MCP config
+ipcMain.handle(
+  "write-mcp-config",
+  (_event, mcpConfig: Record<string, unknown>) => writeMCPConfig(mcpConfig),
+);
+
+// MCP introspection
+ipcMain.handle("list-mcp-servers", () => listMCPServers());
+ipcMain.handle("refresh-mcp-servers", () => {
+  clearMCPCache();
+  return listMCPServers();
 });
 
 // Projects

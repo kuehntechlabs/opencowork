@@ -49,6 +49,70 @@ const api = {
   addRecentDirectory: (path: string): Promise<void> =>
     ipcRenderer.invoke("add-recent-directory", path),
 
+  // MCP config
+  writeMCPConfig: (mcpConfig: Record<string, unknown>): Promise<void> =>
+    ipcRenderer.invoke("write-mcp-config", mcpConfig),
+
+  // MCP introspection
+  listMCPServers: (): Promise<
+    {
+      name: string;
+      type: string;
+      command?: string[];
+      url?: string;
+      tools: {
+        name: string;
+        description?: string;
+        inputSchema?: Record<string, unknown>;
+      }[];
+      prompts: {
+        name: string;
+        description?: string;
+        arguments?: {
+          name: string;
+          description?: string;
+          required?: boolean;
+        }[];
+      }[];
+      resources: {
+        uri: string;
+        name: string;
+        description?: string;
+        mimeType?: string;
+      }[];
+      error?: string;
+    }[]
+  > => ipcRenderer.invoke("list-mcp-servers"),
+  refreshMCPServers: (): Promise<
+    {
+      name: string;
+      type: string;
+      command?: string[];
+      url?: string;
+      tools: {
+        name: string;
+        description?: string;
+        inputSchema?: Record<string, unknown>;
+      }[];
+      prompts: {
+        name: string;
+        description?: string;
+        arguments?: {
+          name: string;
+          description?: string;
+          required?: boolean;
+        }[];
+      }[];
+      resources: {
+        uri: string;
+        name: string;
+        description?: string;
+        mimeType?: string;
+      }[];
+      error?: string;
+    }[]
+  > => ipcRenderer.invoke("refresh-mcp-servers"),
+
   // Skills
   listSkillFiles: (
     dirPath: string,

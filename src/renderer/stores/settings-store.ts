@@ -7,7 +7,7 @@ export type Theme = "dark" | "light" | "system";
 // "plan" = plan agent (create a plan before making changes)
 // "bypass" = build agent with ALL permissions auto-approved
 export type PermissionMode = "ask" | "auto-accept" | "plan" | "bypass";
-export type RightPanelPage = "projects" | "customize" | null;
+export type RightPanelPage = "projects" | "customize" | "directory" | null;
 
 interface SettingsState {
   theme: Theme;
