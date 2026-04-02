@@ -7,6 +7,7 @@ import type {
   PermissionRequest,
 } from "../api/types";
 import * as api from "../api/client";
+import { useSettingsStore } from "./settings-store";
 
 interface SessionState {
   sessions: Record<string, Session>;
@@ -70,6 +71,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ activeSessionId: id });
     if (id) {
       get().loadMessages(id);
+      // Clear any open right panel page when navigating to a session
+      useSettingsStore.getState().setRightPanelPage(null);
     }
   },
 

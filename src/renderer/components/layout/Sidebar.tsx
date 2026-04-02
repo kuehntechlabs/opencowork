@@ -3,15 +3,18 @@ import { SidebarSettings } from "../sidebar/SidebarSettings";
 import { ChatHistoryList } from "../sidebar/ChatHistoryList";
 import { useSessionStore } from "../../stores/session-store";
 import { useServerStore } from "../../stores/server-store";
+import { useSettingsStore } from "../../stores/settings-store";
 import { useState } from "react";
 
 export function Sidebar() {
   const [searchQuery, setSearchQuery] = useState("");
   const setActiveSession = useSessionStore((s) => s.setActiveSession);
+  const setRightPanelPage = useSettingsStore((s) => s.setRightPanelPage);
   const directory = useServerStore((s) => s.directory);
 
   const handleNewChat = () => {
     setActiveSession(null);
+    setRightPanelPage(null);
   };
 
   return (
