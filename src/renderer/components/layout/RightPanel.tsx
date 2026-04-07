@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useArtifactStore } from "../../stores/artifact-store";
@@ -9,16 +10,38 @@ import { DirectoryPage } from "../pages/DirectoryPage";
 import { ArtifactPanel } from "../artifacts/ArtifactPanel";
 import { useDirectoryInstall } from "../../hooks/useDirectoryInstall";
 
+const SIDEBAR_WIDTH = 280;
+const MIN_PANEL_WIDTH = 400; // minimum width for each panel in split view
+
 export function RightPanel() {
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
   const sidebarOpen = useSettingsStore((s) => s.sidebarOpen);
+  const setSidebarOpen = useSettingsStore((s) => s.setSidebarOpen);
   const toggleSidebar = useSettingsStore((s) => s.toggleSidebar);
   const rightPanelPage = useSettingsStore((s) => s.rightPanelPage);
   const setRightPanelPage = useSettingsStore((s) => s.setRightPanelPage);
   const artifactPanelOpen = useArtifactStore((s) => s.panelOpen);
   const activeArtifactId = useArtifactStore((s) => s.activeArtifactId);
+  const sidebarWasOpen = useRef(sidebarOpen);
 
   const { installedNames, handleInstall } = useDirectoryInstall();
+
+  // Auto-collapse sidebar when artifact panel opens if viewport is too narrow
+  useEffect(() => {
+    const showingArtifact = artifactPanelOpen && activeArtifactId;
+    if (showingArtifact && sidebarOpen) {
+      const available = window.innerWidth - SIDEBAR_WIDTH;
+      if (available < MIN_PANEL_WIDTH * 2) {
+        sidebarWasOpen.current = true;
+        setSidebarOpen(false);
+      }
+    }
+    // Restore sidebar when artifact panel closes (if we collapsed it)
+    if (!showingArtifact && sidebarWasOpen.current && !sidebarOpen) {
+      sidebarWasOpen.current = false;
+      setSidebarOpen(true);
+    }
+  }, [artifactPanelOpen, activeArtifactId, sidebarOpen, setSidebarOpen]);
 
   const renderContent = () => {
     if (rightPanelPage === "directory") {
@@ -72,8 +95,10 @@ export function RightPanel() {
       if (artifactPanelOpen && activeArtifactId) {
         return (
           <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <ChatView sessionId={activeSessionId} />
+            </div>
             <ArtifactPanel />
-            <ChatView sessionId={activeSessionId} />
           </div>
         );
       }

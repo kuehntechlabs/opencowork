@@ -51,13 +51,10 @@ export function ArtifactPanel() {
   };
 
   return (
-    <div
-      className="relative flex h-full flex-col border-r border-border bg-surface"
-      style={{ width: panelWidth, minWidth: 300, maxWidth: "60vw" }}
-    >
+    <div className="relative flex h-full flex-1 flex-col border-l border-border bg-surface">
+      <ArtifactResizeHandle />
       <ArtifactPanelHeader />
       <div className="flex-1 overflow-hidden">{renderContent()}</div>
-      <ArtifactResizeHandle />
     </div>
   );
 }
