@@ -5,7 +5,7 @@ import { PermissionBanner } from "./PermissionBanner";
 import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useCurrentAgent } from "../input/ComposerBar";
-import { Spinner } from "../common/Spinner";
+import { useArtifactDetector } from "../../hooks/useArtifactDetector";
 
 interface Props {
   sessionId: string;
@@ -23,6 +23,8 @@ export function ChatView({ sessionId }: Props) {
   const { selectedProvider, selectedModel } = useSettingsStore();
   const agent = useCurrentAgent();
   const isBusy = status?.type === "busy";
+
+  useArtifactDetector(sessionId);
 
   const handleSend = useCallback(
     async (text: string) => {
@@ -56,12 +58,6 @@ export function ChatView({ sessionId }: Props) {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         <MessageList sessionId={sessionId} messages={messages} />
-        {isBusy && (
-          <div className="flex items-center gap-2 px-6 py-3">
-            <Spinner size={16} />
-            <span className="text-xs text-text-tertiary">Thinking...</span>
-          </div>
-        )}
       </div>
 
       {/* Permission requests */}

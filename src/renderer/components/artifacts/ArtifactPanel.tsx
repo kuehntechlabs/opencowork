@@ -1,0 +1,63 @@
+import { useArtifactStore } from "../../stores/artifact-store";
+import { ArtifactPanelHeader } from "./ArtifactPanelHeader";
+import { ArtifactResizeHandle } from "./ArtifactResizeHandle";
+import { HtmlArtifactRenderer } from "./HtmlArtifactRenderer";
+import { ReactArtifactRenderer } from "./ReactArtifactRenderer";
+import { BrowserPreview } from "./BrowserPreview";
+import { NotebookRenderer } from "./NotebookRenderer";
+import { CodeBlock } from "../chat/CodeBlock";
+
+export function ArtifactPanel() {
+  const activeId = useArtifactStore((s) => s.activeArtifactId);
+  const artifact = useArtifactStore((s) =>
+    s.activeArtifactId ? s.artifacts[s.activeArtifactId] : null,
+  );
+  const panelWidth = useArtifactStore((s) => s.panelWidth);
+  const viewMode = useArtifactStore((s) => s.viewMode);
+
+  if (!artifact) return null;
+
+  const renderContent = () => {
+    // Code view mode for html/react
+    if (
+      viewMode === "code" &&
+      (artifact.type === "html" || artifact.type === "react")
+    ) {
+      return (
+        <div className="h-full overflow-auto p-3">
+          <CodeBlock language={artifact.language ?? artifact.type}>
+            {artifact.content ?? ""}
+          </CodeBlock>
+        </div>
+      );
+    }
+
+    switch (artifact.type) {
+      case "html":
+        return <HtmlArtifactRenderer content={artifact.content ?? ""} />;
+      case "react":
+        return <ReactArtifactRenderer content={artifact.content ?? ""} />;
+      case "browser":
+        return <BrowserPreview url={artifact.url ?? "http://localhost:3000"} />;
+      case "notebook":
+        return <NotebookRenderer filePath={artifact.filePath ?? ""} />;
+      default:
+        return (
+          <div className="flex h-full items-center justify-center text-sm text-text-tertiary">
+            Unsupported artifact type
+          </div>
+        );
+    }
+  };
+
+  return (
+    <div
+      className="relative flex h-full flex-col border-r border-border bg-surface"
+      style={{ width: panelWidth, minWidth: 300, maxWidth: "60vw" }}
+    >
+      <ArtifactPanelHeader />
+      <div className="flex-1 overflow-hidden">{renderContent()}</div>
+      <ArtifactResizeHandle />
+    </div>
+  );
+}

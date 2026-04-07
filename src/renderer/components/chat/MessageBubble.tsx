@@ -35,7 +35,12 @@ export function MessageBubble({ message }: Props) {
               return <ReasoningBlock key={part.id} part={part} />;
             case "text":
               return (
-                <TextContent key={part.id} text={part.text} isUser={isUser} />
+                <TextContent
+                  key={part.id}
+                  text={part.text}
+                  isUser={isUser}
+                  sessionId={message.sessionID}
+                />
               );
             case "tool":
               return <ToolCallBlock key={part.id} part={part} />;
@@ -75,6 +80,19 @@ export function MessageBubble({ message }: Props) {
               return null;
           }
         })}
+
+        {/* Assistant: show fallback when only tool/reasoning parts exist (no text output) */}
+        {message.role === "assistant" &&
+          parts.length > 0 &&
+          !parts.some((p) => p.type === "text") &&
+          parts.some(
+            (p) => p.type === "tool" && p.state.status === "completed",
+          ) &&
+          (message as AssistantMessage).finish && (
+            <p className="mt-1 text-xs italic text-text-tertiary">
+              Completed actions above.
+            </p>
+          )}
 
         {/* Assistant metadata (only if no step-finish parts already show this) */}
         {message.role === "assistant" &&

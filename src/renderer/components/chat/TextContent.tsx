@@ -5,14 +5,28 @@ import { CodeBlock } from "./CodeBlock";
 interface Props {
   text: string;
   isUser?: boolean;
+  sessionId?: string;
 }
 
-export function TextContent({ text, isUser }: Props) {
+// Strip <artifact> tags from AI output — they're rendered in the artifact panel
+function stripArtifactTags(text: string): string {
+  return text.replace(/<artifact\s+[^>]*?>[\s\S]*?<\/artifact>/g, "").trim();
+}
+
+export function TextContent({ text, isUser, sessionId }: Props) {
   if (!text) return null;
 
   if (isUser) {
-    return <p className="whitespace-pre-wrap text-sm">{text}</p>;
+    // Strip injected artifact system prompt from display
+    const userText = text.replace(
+      /<artifacts_info>[\s\S]*?<\/artifacts_info>\s*/g,
+      "",
+    );
+    return <p className="whitespace-pre-wrap text-sm">{userText}</p>;
   }
+
+  const displayText = stripArtifactTags(text);
+  if (!displayText) return null;
 
   return (
     <div className="prose prose-sm prose-invert max-w-none">
@@ -35,7 +49,7 @@ export function TextContent({ text, isUser }: Props) {
             }
 
             return (
-              <CodeBlock language={match?.[1] || ""}>
+              <CodeBlock language={match?.[1] || ""} sessionId={sessionId}>
                 {String(children).replace(/\n$/, "")}
               </CodeBlock>
             );
@@ -117,7 +131,7 @@ export function TextContent({ text, isUser }: Props) {
           },
         }}
       >
-        {text}
+        {displayText}
       </ReactMarkdown>
     </div>
   );

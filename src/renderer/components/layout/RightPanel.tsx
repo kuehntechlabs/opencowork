@@ -1,10 +1,12 @@
 import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
+import { useArtifactStore } from "../../stores/artifact-store";
 import { HomeView } from "../home/HomeView";
 import { ChatView } from "../chat/ChatView";
 import { ProjectsPage } from "../pages/ProjectsPage";
 import { CustomizePage } from "../pages/CustomizePage";
 import { DirectoryPage } from "../pages/DirectoryPage";
+import { ArtifactPanel } from "../artifacts/ArtifactPanel";
 import { useDirectoryInstall } from "../../hooks/useDirectoryInstall";
 
 export function RightPanel() {
@@ -13,6 +15,8 @@ export function RightPanel() {
   const toggleSidebar = useSettingsStore((s) => s.toggleSidebar);
   const rightPanelPage = useSettingsStore((s) => s.rightPanelPage);
   const setRightPanelPage = useSettingsStore((s) => s.setRightPanelPage);
+  const artifactPanelOpen = useArtifactStore((s) => s.panelOpen);
+  const activeArtifactId = useArtifactStore((s) => s.activeArtifactId);
 
   const { installedNames, handleInstall } = useDirectoryInstall();
 
@@ -65,6 +69,14 @@ export function RightPanel() {
       );
     }
     if (activeSessionId) {
+      if (artifactPanelOpen && activeArtifactId) {
+        return (
+          <div className="flex flex-1 overflow-hidden">
+            <ArtifactPanel />
+            <ChatView sessionId={activeSessionId} />
+          </div>
+        );
+      }
       return <ChatView sessionId={activeSessionId} />;
     }
     return <HomeView />;

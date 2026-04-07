@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { ToolPart } from "../../api/types";
 import { Spinner } from "../common/Spinner";
+import { useArtifactStore } from "../../stores/artifact-store";
+import { detectLocalhostUrls } from "../../utils/artifact-detection";
 
 interface Props {
   part: ToolPart;
@@ -9,6 +11,7 @@ interface Props {
 export function ToolCallBlock({ part }: Props) {
   const { state, tool } = part;
   const [expanded, setExpanded] = useState(false);
+  const addArtifact = useArtifactStore((s) => s.addArtifact);
 
   const statusIcon = () => {
     switch (state.status) {
@@ -115,9 +118,29 @@ export function ToolCallBlock({ part }: Props) {
           )}
           {state.status === "completed" && state.output && (
             <div>
-              <span className="text-[10px] font-semibold uppercase text-text-tertiary">
-                Output
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase text-text-tertiary">
+                  Output
+                </span>
+                {detectLocalhostUrls(state.output).length > 0 && (
+                  <button
+                    onClick={() => {
+                      const urls = detectLocalhostUrls(state.output);
+                      if (urls[0]) {
+                        addArtifact({
+                          type: "browser",
+                          title: urls[0],
+                          url: urls[0],
+                          sessionId: part.sessionID,
+                        });
+                      }
+                    }}
+                    className="text-[10px] text-accent hover:text-accent-hover"
+                  >
+                    Open Preview
+                  </button>
+                )}
+              </div>
               <pre className="mt-1 max-h-40 overflow-auto rounded bg-surface-secondary p-2 font-mono text-[11px] text-text-secondary">
                 {state.output}
               </pre>
