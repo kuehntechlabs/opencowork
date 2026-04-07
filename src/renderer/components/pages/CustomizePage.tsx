@@ -192,6 +192,17 @@ export function CustomizePage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const handleRemoveConnector = useCallback(async (serverName: string) => {
+    await api.removeMCPConfig(serverName);
+    await api.restartSidecar().catch(() => {});
+    setSelectedServer(null);
+    // Refresh the connectors list
+    api
+      .refreshMCPServers()
+      .then(setServers)
+      .catch(() => {});
+  }, []);
+
   const handleRemoveSkill = useCallback(async (location: string) => {
     const result = await api.removeSkill(location);
     if (result.ok) {
@@ -375,6 +386,7 @@ export function CustomizePage() {
             <ConnectorDetailView
               server={selectedServer}
               onBack={() => setSelectedServer(null)}
+              onRemove={handleRemoveConnector}
             />
           ) : (
             <div className="flex h-full items-center justify-center">
@@ -818,9 +830,11 @@ type DetailTab = "tools" | "prompts" | "resources";
 function ConnectorDetailView({
   server,
   onBack,
+  onRemove,
 }: {
   server: MCPServer;
   onBack: () => void;
+  onRemove?: (serverName: string) => void;
 }) {
   const [tab, setTab] = useState<DetailTab>("tools");
 
@@ -851,9 +865,17 @@ function ConnectorDetailView({
               <polyline points="12 19 5 12 12 5" />
             </svg>
           </button>
-          <h3 className="min-w-0 truncate text-lg font-semibold text-text">
+          <h3 className="min-w-0 flex-1 truncate text-lg font-semibold text-text">
             {server.name}
           </h3>
+          {onRemove && (
+            <button
+              onClick={() => onRemove(server.name)}
+              className="shrink-0 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/10"
+            >
+              Remove
+            </button>
+          )}
         </div>
 
         {/* Metadata */}

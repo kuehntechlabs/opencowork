@@ -52,6 +52,8 @@ const api = {
   // MCP config
   writeMCPConfig: (mcpConfig: Record<string, unknown>): Promise<void> =>
     ipcRenderer.invoke("write-mcp-config", mcpConfig),
+  removeMCPConfig: (serverName: string): Promise<void> =>
+    ipcRenderer.invoke("remove-mcp-config", serverName),
 
   // MCP introspection
   listMCPServers: (): Promise<

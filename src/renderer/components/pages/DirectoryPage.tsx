@@ -17,7 +17,7 @@ type SortOption = "popular" | "name";
 interface Props {
   onClose: () => void;
   onInstall: (item: CatalogItem) => void;
-  onRemove?: (skillName: string) => void;
+  onRemove?: (itemName: string, category?: string) => void;
   installedNames: Set<string>;
   installingNames?: Set<string>;
   initialCategory?: CatalogCategory;
@@ -398,7 +398,7 @@ function CatalogCard({
   installed: boolean;
   installing: boolean;
   onInstall: (item: CatalogItem) => void;
-  onRemove?: (skillName: string) => void;
+  onRemove?: (itemName: string, category?: string) => void;
 }) {
   return (
     <div
@@ -415,7 +415,7 @@ function CatalogCard({
         </div>
       ) : installed ? (
         <button
-          onClick={() => onRemove?.(item.name)}
+          onClick={() => onRemove?.(item.name, item.category)}
           className="absolute right-3 top-3 rounded-md p-1 text-green-400 transition-colors hover:bg-red-500/10 hover:text-red-400"
           title="Remove"
         >

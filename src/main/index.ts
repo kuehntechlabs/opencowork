@@ -27,6 +27,7 @@ import {
   readOpencodeConfig,
   writeProviderConfig,
   writeMCPConfig,
+  removeMCPConfig,
   restartSidecar,
 } from "./sidecar";
 import { listMCPServers, clearMCPCache } from "./mcp-inspect";
@@ -185,6 +186,9 @@ ipcMain.handle("fetch-url", async (_event, url: string) => {
 ipcMain.handle(
   "write-mcp-config",
   (_event, mcpConfig: Record<string, unknown>) => writeMCPConfig(mcpConfig),
+);
+ipcMain.handle("remove-mcp-config", (_event, serverName: string) =>
+  removeMCPConfig(serverName),
 );
 
 // MCP introspection

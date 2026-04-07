@@ -195,15 +195,30 @@ export function useDirectoryInstall() {
   );
 
   const handleRemove = useCallback(
-    async (skillName: string) => {
-      setInstalling((prev) => new Set([...prev, skillName]));
+    async (itemName: string, category?: string) => {
+      setInstalling((prev) => new Set([...prev, itemName]));
 
       try {
-        const result = await api.removeSkill(skillName);
+        if (category === "connectors") {
+          // Remove MCP server from config
+          const configName = itemName.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+          await api.removeMCPConfig(configName);
+          await api.restartSidecar().catch(() => {});
+          setInstalling((prev) => {
+            const next = new Set(prev);
+            next.delete(itemName);
+            return next;
+          });
+          await refreshInstalled();
+          return;
+        }
+
+        // Remove skill
+        const result = await api.removeSkill(itemName);
 
         setInstalling((prev) => {
           const next = new Set(prev);
-          next.delete(skillName);
+          next.delete(itemName);
           return next;
         });
 
@@ -216,7 +231,7 @@ export function useDirectoryInstall() {
         console.error("Remove failed:", err);
         setInstalling((prev) => {
           const next = new Set(prev);
-          next.delete(skillName);
+          next.delete(itemName);
           return next;
         });
       }

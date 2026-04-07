@@ -203,6 +203,16 @@ export function writeMCPConfig(mcpConfig: Record<string, unknown>): void {
   log.info("Updated opencode MCP config");
 }
 
+export function removeMCPConfig(serverName: string): void {
+  const existing = readOpencodeConfig();
+  const mcp = (existing.mcp as Record<string, unknown>) || {};
+  delete mcp[serverName];
+  existing.mcp = mcp;
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(configPath, JSON.stringify(existing, null, 2) + "\n");
+  log.info(`Removed MCP server: ${serverName}`);
+}
+
 export async function restartSidecar(): Promise<string | null> {
   await stopSidecar();
   try {

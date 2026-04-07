@@ -10,7 +10,7 @@ Desktop UI for OpenCode — AI Coding Agent. Built with Electron, React 19, and 
   - **React** — JSX/TSX transpiled via Sucrase with React 19 runtime
   - **Browser Preview** — Embedded webview for localhost dev servers
   - **Jupyter Notebooks** — Parsed and rendered `.ipynb` files
-- **MCP Connectors** — Model Context Protocol server management
+- **MCP Marketplace** — Browse and install MCP servers from the official registry (registry.modelcontextprotocol.io), with support for both local (stdio/npm) and remote (streamable-http/sse) transports, introspection, and one-click removal
 - **Skills Browser** — Discover and customize AI skills
 - **Projects** — Project management with custom agent instructions
 
