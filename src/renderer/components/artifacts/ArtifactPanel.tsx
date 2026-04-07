@@ -18,6 +18,18 @@ export function ArtifactPanel() {
   if (!artifact) return null;
 
   const renderContent = () => {
+    // Show loading state while artifact is still streaming
+    if (artifact.loading) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-3 border-accent/20 border-t-accent" />
+          <p className="text-sm text-text-tertiary">
+            Generating {artifact.type === "react" ? "component" : "preview"}...
+          </p>
+        </div>
+      );
+    }
+
     // Code view mode for html/react
     if (
       viewMode === "code" &&

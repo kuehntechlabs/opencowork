@@ -94,14 +94,30 @@ export function MessageBubble({ message }: Props) {
             </p>
           )}
 
+        {/* Assistant: show spinner while waiting for first content */}
+        {message.role === "assistant" &&
+          parts.length === 0 &&
+          !(message as AssistantMessage).finish && (
+            <div className="flex items-center gap-2 py-1">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-text-tertiary/30 border-t-text-tertiary" />
+              <span className="text-xs text-text-tertiary">Thinking...</span>
+            </div>
+          )}
+
         {/* Assistant metadata (only if no step-finish parts already show this) */}
         {message.role === "assistant" &&
           !parts.some((p) => p.type === "step-finish") &&
           (() => {
             const msg = message as AssistantMessage;
-            return msg.tokens ? (
+            // Don't show metadata while still waiting for content
+            if (parts.length === 0 && !msg.finish) return null;
+            const totalTokens = msg.tokens
+              ? msg.tokens.input + msg.tokens.output
+              : 0;
+            if (!totalTokens && !msg.cost && !msg.providerID) return null;
+            return (
               <div className="mt-2 flex items-center gap-3 border-t border-border/30 pt-2 text-[10px] text-text-tertiary">
-                <span>{msg.tokens.input + msg.tokens.output} tokens</span>
+                {totalTokens > 0 && <span>{totalTokens} tokens</span>}
                 {msg.cost > 0 && <span>${msg.cost.toFixed(4)}</span>}
                 {msg.providerID && (
                   <span>
@@ -109,7 +125,7 @@ export function MessageBubble({ message }: Props) {
                   </span>
                 )}
               </div>
-            ) : null;
+            );
           })()}
       </div>
     </div>

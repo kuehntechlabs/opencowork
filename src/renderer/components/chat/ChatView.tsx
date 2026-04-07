@@ -28,13 +28,25 @@ export function ChatView({ sessionId }: Props) {
 
   const handleSend = useCallback(
     async (text: string) => {
+      // If busy, abort current generation first then send
+      if (status?.type === "busy") {
+        await abortSession(sessionId);
+      }
       const model =
         selectedProvider && selectedModel
           ? { providerID: selectedProvider, modelID: selectedModel }
           : undefined;
       await sendPrompt(sessionId, text, { model, agent });
     },
-    [sessionId, sendPrompt, selectedProvider, selectedModel, agent],
+    [
+      sessionId,
+      sendPrompt,
+      abortSession,
+      status,
+      selectedProvider,
+      selectedModel,
+      agent,
+    ],
   );
 
   const handleAbort = useCallback(() => {
@@ -65,16 +77,28 @@ export function ChatView({ sessionId }: Props) {
 
       {/* Input */}
       <div className="border-t border-border p-4">
-        {isBusy ? (
-          <button
-            onClick={handleAbort}
-            className="w-full rounded-xl border border-red-500/30 bg-red-500/10 py-2.5 text-sm text-red-400 transition-colors hover:bg-red-500/20"
-          >
-            Stop generating
-          </button>
-        ) : (
-          <MessageInput onSend={handleSend} placeholder="Send a message..." />
+        {isBusy && (
+          <div className="mb-2 flex justify-center">
+            <button
+              onClick={handleAbort}
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-secondary px-3 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+              Stop
+            </button>
+          </div>
         )}
+        <MessageInput
+          onSend={handleSend}
+          placeholder={isBusy ? "Send to interrupt..." : "Send a message..."}
+        />
       </div>
     </div>
   );

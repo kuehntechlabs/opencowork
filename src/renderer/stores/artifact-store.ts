@@ -12,6 +12,8 @@ export interface Artifact {
   url?: string;
   sessionId: string;
   createdAt: number;
+  /** True while the artifact is still streaming (content incomplete) */
+  loading?: boolean;
 }
 
 interface ArtifactState {
@@ -30,6 +32,7 @@ interface ArtifactState {
   setViewMode: (mode: "preview" | "code") => void;
   clearSessionArtifacts: (sessionId: string) => void;
   updateArtifactContent: (id: string, content: string) => void;
+  setArtifactLoading: (id: string, loading: boolean) => void;
 }
 
 let counter = 0;
@@ -107,6 +110,15 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
       if (!existing) return {};
       return {
         artifacts: { ...s.artifacts, [id]: { ...existing, content } },
+      };
+    }),
+
+  setArtifactLoading: (id, loading) =>
+    set((s) => {
+      const existing = s.artifacts[id];
+      if (!existing) return {};
+      return {
+        artifacts: { ...s.artifacts, [id]: { ...existing, loading } },
       };
     }),
 }));

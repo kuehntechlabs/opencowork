@@ -2,7 +2,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CodeBlock } from "./CodeBlock";
 import { useArtifactStore } from "../../stores/artifact-store";
-import { extractArtifactTags } from "../../utils/artifact-detection";
+import {
+  extractArtifactTags,
+  extractPartialArtifacts,
+} from "../../utils/artifact-detection";
 
 interface Props {
   text: string;
@@ -18,8 +21,13 @@ const TYPE_ICONS: Record<string, string> = {
 };
 
 // Strip <artifact> tags from AI output — replaced by inline cards
+// Also strips incomplete/streaming artifacts (opening tag without closing tag)
 function stripArtifactTags(text: string): string {
-  return text.replace(/<artifact\s+[^>]*?>[\s\S]*?<\/artifact>/g, "").trim();
+  // First strip complete tags
+  let result = text.replace(/<artifact\s+[^>]*?>[\s\S]*?<\/artifact>/g, "");
+  // Then strip incomplete tags (opening tag + everything after it)
+  result = result.replace(/<artifact\s+[^>]*?>[\s\S]*$/g, "");
+  return result.trim();
 }
 
 /** Clickable artifact card shown inline in the chat */
@@ -27,20 +35,19 @@ function ArtifactCard({
   type,
   title,
   identifier,
-  content,
+  complete,
   sessionId,
 }: {
   type: string;
   title: string;
   identifier: string;
-  content: string;
+  complete: boolean;
   sessionId: string;
 }) {
   const setActiveArtifact = useArtifactStore((s) => s.setActiveArtifact);
   const artifacts = useArtifactStore((s) => s.artifacts);
 
   const handleClick = () => {
-    // Find the artifact in the store by matching session + title + type
     const match = Object.values(artifacts).find(
       (a) => a.sessionId === sessionId && a.title === title && a.type === type,
     );
@@ -55,58 +62,66 @@ function ArtifactCard({
       className="my-2 flex w-full items-center gap-3 rounded-lg border border-border/60 bg-surface-tertiary/30 px-3 py-2.5 text-left transition-colors hover:border-accent/40 hover:bg-surface-tertiary/50"
     >
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent">
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          {type === "react" ? (
-            <>
-              <circle cx="12" cy="12" r="2" />
-              <ellipse cx="12" cy="12" rx="10" ry="4" />
-              <ellipse
-                cx="12"
-                cy="12"
-                rx="10"
-                ry="4"
-                transform="rotate(60 12 12)"
-              />
-              <ellipse
-                cx="12"
-                cy="12"
-                rx="10"
-                ry="4"
-                transform="rotate(120 12 12)"
-              />
-            </>
-          ) : (
-            <>
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-            </>
-          )}
-        </svg>
+        {!complete ? (
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent/30 border-t-accent" />
+        ) : (
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            {type === "react" ? (
+              <>
+                <circle cx="12" cy="12" r="2" />
+                <ellipse cx="12" cy="12" rx="10" ry="4" />
+                <ellipse
+                  cx="12"
+                  cy="12"
+                  rx="10"
+                  ry="4"
+                  transform="rotate(60 12 12)"
+                />
+                <ellipse
+                  cx="12"
+                  cy="12"
+                  rx="10"
+                  ry="4"
+                  transform="rotate(120 12 12)"
+                />
+              </>
+            ) : (
+              <>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </>
+            )}
+          </svg>
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-xs font-medium text-text">{title}</div>
         <div className="text-[10px] text-text-tertiary">
-          {TYPE_ICONS[type] || type} — Click to open
+          {!complete
+            ? "Generating..."
+            : `${TYPE_ICONS[type] || type} — Click to open`}
         </div>
       </div>
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        className="shrink-0 text-text-tertiary"
-      >
-        <path d="m9 18 6-6-6-6" />
-      </svg>
+      {complete && (
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className="shrink-0 text-text-tertiary"
+        >
+          <path d="m9 18 6-6-6-6" />
+        </svg>
+      )}
     </button>
   );
 }
@@ -123,8 +138,8 @@ export function TextContent({ text, isUser, sessionId }: Props) {
     return <p className="whitespace-pre-wrap text-sm">{userText}</p>;
   }
 
-  // Extract artifact tags for inline cards
-  const artifactTags = extractArtifactTags(text);
+  // Extract artifact tags for inline cards (including streaming/incomplete)
+  const artifactTags = extractPartialArtifacts(text);
   const displayText = stripArtifactTags(text);
 
   return (
@@ -251,7 +266,7 @@ export function TextContent({ text, isUser, sessionId }: Props) {
           type={tag.type}
           title={tag.title}
           identifier={tag.identifier}
-          content={tag.content}
+          complete={tag.complete}
           sessionId={sessionId ?? ""}
         />
       ))}

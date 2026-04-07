@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useSessionStore } from "../stores/session-store";
 import { useArtifactStore } from "../stores/artifact-store";
 import {
-  extractArtifactTags,
+  extractPartialArtifacts,
   extractCodeBlocks,
   isArtifactLanguage,
   isReactLanguage,
@@ -15,7 +15,8 @@ import {
  * and auto-opens the artifact panel when detected.
  *
  * Detection priority:
- * 1. Structured <artifact> tags (from models with artifact system prompt)
+ * 1. Structured <artifact> tags — detected immediately on opening tag
+ *    (creates a loading artifact, updates as content streams)
  * 2. Code blocks with html/jsx/tsx/svg language (fallback)
  * 3. Localhost URLs in tool output → browser preview
  * 4. .ipynb file paths in tool output → notebook preview
@@ -23,9 +24,12 @@ import {
 export function useArtifactDetector(sessionId: string) {
   const seenRef = useRef(new Set<string>());
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  /** Maps artifact identifier → store artifact ID for streaming updates */
+  const artifactIdMap = useRef(new Map<string, string>());
 
   useEffect(() => {
     seenRef.current.clear();
+    artifactIdMap.current.clear();
   }, [sessionId]);
 
   useEffect(() => {
@@ -41,54 +45,58 @@ export function useArtifactDetector(sessionId: string) {
 
           // --- Text parts: detect artifact tags and code blocks ---
           if (part.type === "text" && part.text) {
-            // 1. Structured <artifact> tags (highest priority)
-            const artifactTags = extractArtifactTags(part.text);
-            for (const tag of artifactTags) {
-              const tagKey = `tag-${key}-${tag.identifier}`;
-              if (seenRef.current.has(tagKey)) continue;
-              seenRef.current.add(tagKey);
+            // 1. Structured <artifact> tags — detect opening tag immediately
+            const partials = extractPartialArtifacts(part.text);
 
-              clearTimeout(timerRef.current);
-              timerRef.current = setTimeout(() => {
-                // Re-read latest content for streaming
-                const latestParts =
-                  useSessionStore.getState().parts[msg.id] ?? [];
-                const latestPart = latestParts.find((p) => p.id === part.id);
-                if (!latestPart || latestPart.type !== "text") return;
+            for (const partial of partials) {
+              const tagKey = `tag-${key}-${partial.identifier}`;
+              const existingStoreId = artifactIdMap.current.get(
+                partial.identifier,
+              );
 
-                const latestTags = extractArtifactTags(latestPart.text);
-                const latestTag = latestTags.find(
-                  (t) => t.identifier === tag.identifier,
-                );
-                if (!latestTag) return;
+              if (!seenRef.current.has(tagKey)) {
+                // First time seeing this artifact — create it immediately
+                seenRef.current.add(tagKey);
 
-                // Check if we already have an artifact with this identifier
                 const store = useArtifactStore.getState();
+                // Check if we already have it from a previous render
                 const existing = Object.values(store.artifacts).find(
                   (a) =>
                     a.sessionId === sessionId &&
-                    a.title === latestTag.title &&
-                    a.type === latestTag.type,
+                    a.title === partial.title &&
+                    a.type === partial.type,
                 );
 
                 if (existing) {
-                  // Update existing artifact content
-                  store.updateArtifactContent(existing.id, latestTag.content);
+                  artifactIdMap.current.set(partial.identifier, existing.id);
+                  store.updateArtifactContent(existing.id, partial.content);
+                  if (partial.complete && existing.loading) {
+                    store.setArtifactLoading(existing.id, false);
+                  }
                   store.setActiveArtifact(existing.id);
                 } else {
-                  store.addArtifact({
-                    type: latestTag.type,
-                    title: latestTag.title,
-                    content: latestTag.content,
-                    language: latestTag.type === "react" ? "tsx" : "html",
+                  const id = store.addArtifact({
+                    type: partial.type,
+                    title: partial.title,
+                    content: partial.content,
+                    language: partial.type === "react" ? "tsx" : "html",
                     sessionId,
+                    loading: !partial.complete,
                   });
+                  artifactIdMap.current.set(partial.identifier, id);
                 }
-              }, 500);
+              } else if (existingStoreId) {
+                // Already tracking — update content as it streams
+                const store = useArtifactStore.getState();
+                store.updateArtifactContent(existingStoreId, partial.content);
+                if (partial.complete) {
+                  store.setArtifactLoading(existingStoreId, false);
+                }
+              }
             }
 
             // Skip code block fallback if we found structured tags
-            if (artifactTags.length > 0) continue;
+            if (partials.length > 0) continue;
 
             // 2. Fallback: code blocks with artifact-eligible languages
             const blocks = extractCodeBlocks(part.text);
@@ -134,10 +142,11 @@ export function useArtifactDetector(sessionId: string) {
             // Scan tool input for <artifact> tags (model wrote artifact to file)
             if (part.state.input && !seenRef.current.has(`toolinput-${key}`)) {
               const inputStr = JSON.stringify(part.state.input);
-              const inputTags = extractArtifactTags(inputStr);
-              if (inputTags.length > 0) {
+              const inputPartials = extractPartialArtifacts(inputStr);
+              const completeTags = inputPartials.filter((p) => p.complete);
+              if (completeTags.length > 0) {
                 seenRef.current.add(`toolinput-${key}`);
-                for (const tag of inputTags) {
+                for (const tag of completeTags) {
                   const store = useArtifactStore.getState();
                   store.addArtifact({
                     type: tag.type,
