@@ -194,7 +194,10 @@ export function writeProviderConfig(
 
 export function writeMCPConfig(mcpConfig: Record<string, unknown>): void {
   const existing = readOpencodeConfig();
-  existing.mcp = mcpConfig;
+  existing.mcp = {
+    ...((existing.mcp as Record<string, unknown>) || {}),
+    ...mcpConfig,
+  };
   mkdirSync(configDir, { recursive: true });
   writeFileSync(configPath, JSON.stringify(existing, null, 2) + "\n");
   log.info("Updated opencode MCP config");

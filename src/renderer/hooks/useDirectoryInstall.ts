@@ -25,9 +25,25 @@ export function useDirectoryInstall() {
     async (item: CatalogItem) => {
       try {
         if (item.category === "connectors" && item.mcpCommand) {
-          await api.writeMCPConfig({
-            [item.name]: { type: "local", command: item.mcpCommand },
-          });
+          const config: Record<string, unknown> = {
+            type: "local",
+            command: item.mcpCommand,
+          };
+
+          // Prompt for required env vars
+          if (item.mcpEnv) {
+            const env: Record<string, string> = {};
+            for (const [key, desc] of Object.entries(item.mcpEnv)) {
+              const value = window.prompt(
+                `${desc}\n\nEnvironment variable: ${key}`,
+              );
+              if (!value) return; // user cancelled
+              env[key] = value;
+            }
+            config.env = env;
+          }
+
+          await api.writeMCPConfig({ [item.name]: config });
           setInstalledNames((prev) => new Set([...prev, item.name]));
           return;
         }

@@ -10,6 +10,8 @@ export interface CatalogItem {
   installRef: string;
   /** For MCPs: the command array to add to config */
   mcpCommand?: string[];
+  /** For MCPs: required environment variables { VAR_NAME: "description" } */
+  mcpEnv?: Record<string, string>;
   /** Tags for filtering */
   tags?: string[];
   /** Logo/icon URL (e.g. GitHub avatar) */
@@ -50,6 +52,7 @@ export const CONNECTORS: CatalogItem[] = [
     category: "connectors",
     installRef: "@modelcontextprotocol/server-github",
     mcpCommand: ["npx", "-y", "@modelcontextprotocol/server-github"],
+    mcpEnv: { GITHUB_PERSONAL_ACCESS_TOKEN: "GitHub personal access token" },
     tags: ["git", "code", "ci"],
   },
   {
@@ -72,6 +75,10 @@ export const CONNECTORS: CatalogItem[] = [
     category: "connectors",
     installRef: "@modelcontextprotocol/server-slack",
     mcpCommand: ["npx", "-y", "@modelcontextprotocol/server-slack"],
+    mcpEnv: {
+      SLACK_BOT_TOKEN: "Slack bot token",
+      SLACK_TEAM_ID: "Slack team/workspace ID",
+    },
     tags: ["communication", "messaging"],
   },
   {
@@ -83,6 +90,7 @@ export const CONNECTORS: CatalogItem[] = [
     category: "connectors",
     installRef: "@anthropic/mcp-brave-search",
     mcpCommand: ["npx", "-y", "@anthropic/mcp-brave-search"],
+    mcpEnv: { BRAVE_API_KEY: "Brave Search API key" },
     tags: ["search", "web"],
   },
   {

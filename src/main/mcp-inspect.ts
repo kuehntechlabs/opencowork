@@ -54,50 +54,60 @@ class MCPStdioClient {
     });
 
     this.proc.stdout?.on("data", (chunk: Buffer) => {
-      this.buffer += chunk.toString();
+      const str = chunk.toString();
+      log.info(`MCP [${command[0]}] stdout: ${str.slice(0, 200)}`);
+      this.buffer += str;
       this.processBuffer();
     });
 
     this.proc.stderr?.on("data", (chunk: Buffer) => {
-      log.warn("MCP stderr:", chunk.toString().trim());
+      log.info(`MCP [${command[0]}] stderr: ${chunk.toString().trim()}`);
+    });
+
+    this.proc.on("error", (err) => {
+      log.error(`MCP [${command[0]}] spawn error:`, err);
+    });
+
+    this.proc.on("exit", (code) => {
+      log.info(`MCP [${command[0]}] exited with code ${code}`);
     });
   }
 
   private processBuffer(): void {
-    // MCP uses Content-Length header framing (LSP-style)
     while (true) {
+      // Try Content-Length header framing first (LSP-style)
       const headerEnd = this.buffer.indexOf("\r\n\r\n");
-      if (headerEnd === -1) break;
+      if (headerEnd !== -1) {
+        const header = this.buffer.slice(0, headerEnd);
+        const match = header.match(/Content-Length:\s*(\d+)/i);
+        if (match) {
+          const contentLength = parseInt(match[1]!, 10);
+          const bodyStart = headerEnd + 4;
+          if (this.buffer.length < bodyStart + contentLength) break;
 
-      const header = this.buffer.slice(0, headerEnd);
-      const match = header.match(/Content-Length:\s*(\d+)/i);
-      if (!match) {
-        // Try plain JSON line parsing as fallback
-        const lineEnd = this.buffer.indexOf("\n");
-        if (lineEnd === -1) break;
-        const line = this.buffer.slice(0, lineEnd).trim();
-        this.buffer = this.buffer.slice(lineEnd + 1);
-        if (line) {
+          const body = this.buffer.slice(bodyStart, bodyStart + contentLength);
+          this.buffer = this.buffer.slice(bodyStart + contentLength);
+
           try {
-            this.handleMessage(JSON.parse(line));
+            this.handleMessage(JSON.parse(body));
           } catch {
-            // skip
+            // skip malformed
           }
+          continue;
         }
-        continue;
       }
 
-      const contentLength = parseInt(match[1]!, 10);
-      const bodyStart = headerEnd + 4;
-      if (this.buffer.length < bodyStart + contentLength) break;
-
-      const body = this.buffer.slice(bodyStart, bodyStart + contentLength);
-      this.buffer = this.buffer.slice(bodyStart + contentLength);
-
-      try {
-        this.handleMessage(JSON.parse(body));
-      } catch {
-        // skip malformed
+      // Fallback: plain JSON line parsing (many servers use this)
+      const lineEnd = this.buffer.indexOf("\n");
+      if (lineEnd === -1) break;
+      const line = this.buffer.slice(0, lineEnd).trim();
+      this.buffer = this.buffer.slice(lineEnd + 1);
+      if (line.startsWith("{")) {
+        try {
+          this.handleMessage(JSON.parse(line));
+        } catch {
+          // skip non-JSON lines (e.g. "GitHub MCP Server running on stdio")
+        }
       }
     }
   }
@@ -126,8 +136,9 @@ class MCPStdioClient {
       this.pending.set(id, { resolve, reject });
 
       const msg = JSON.stringify({ jsonrpc: "2.0", id, method, params });
-      const frame = `Content-Length: ${Buffer.byteLength(msg)}\r\n\r\n${msg}`;
-      this.proc.stdin?.write(frame);
+      // Try both formats: Content-Length framing for LSP-style servers,
+      // followed by a newline so line-based servers (like GitHub MCP) can parse it too
+      this.proc.stdin?.write(msg + "\n");
 
       // Timeout after 15s
       setTimeout(() => {
