@@ -103,6 +103,14 @@ ipcMain.handle("restart-sidecar", async () => {
   return url;
 });
 
+// Proxy fetch (bypass CORS for renderer)
+ipcMain.handle("fetch-url", async (_event, url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) return { ok: false, status: res.status, body: "" };
+  const body = await res.text();
+  return { ok: true, status: res.status, body };
+});
+
 // MCP config
 ipcMain.handle(
   "write-mcp-config",

@@ -60,6 +60,7 @@ function getSkillDir(location: string): string {
 }
 
 export function CustomizePage() {
+  const openDirectory = useSettingsStore((s) => s.openDirectory);
   const setRightPanelPage = useSettingsStore((s) => s.setRightPanelPage);
 
   // Navigation
@@ -205,8 +206,8 @@ export function CustomizePage() {
     <div className="flex h-full min-h-0">
       {/* LEFT PANEL */}
       <div className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
-        {/* Drag region + back button */}
-        <div className="drag-region flex h-12 shrink-0 items-center px-4">
+        {/* Drag region + back button + title + add */}
+        <div className="drag-region flex h-12 shrink-0 items-center gap-2 px-4">
           <button
             onClick={section ? handleBackToMenu : () => setRightPanelPage(null)}
             className="no-drag rounded-md p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
@@ -224,15 +225,38 @@ export function CustomizePage() {
               <polyline points="12 19 5 12 12 5" />
             </svg>
           </button>
+          <span className="no-drag text-sm font-semibold text-text">
+            {section === "skills"
+              ? "Skills"
+              : section === "connectors"
+                ? "Connectors"
+                : "Customize"}
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={() =>
+              openDirectory(section === "connectors" ? "connectors" : "skills")
+            }
+            className="no-drag rounded-md p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
+            title="Browse directory"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
         </div>
 
         {/* Left panel content */}
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {!section && (
             <div className="px-4 pb-6">
-              <h2 className="mb-5 text-lg font-semibold text-text">
-                Customize
-              </h2>
               <div className="flex flex-col gap-0.5">
                 <MenuButton
                   icon={
@@ -270,26 +294,6 @@ export function CustomizePage() {
                   label="Connectors"
                   onClick={() => setSection("connectors")}
                 />
-                <div className="my-2 border-t border-border" />
-                <MenuButton
-                  icon={
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                    >
-                      <rect x="3" y="3" width="7" height="7" rx="1" />
-                      <rect x="14" y="3" width="7" height="7" rx="1" />
-                      <rect x="3" y="14" width="7" height="7" rx="1" />
-                      <rect x="14" y="14" width="7" height="7" rx="1" />
-                    </svg>
-                  }
-                  label="Directory"
-                  onClick={() => setRightPanelPage("directory")}
-                />
               </div>
             </div>
           )}
@@ -307,6 +311,7 @@ export function CustomizePage() {
               expandedDirs={expandedDirs}
               onToggleDir={toggleDir}
               onOpenFile={handleOpenFile}
+              onAdd={() => openDirectory("skills")}
             />
           )}
 
@@ -319,6 +324,7 @@ export function CustomizePage() {
               selectedServer={selectedServer}
               onSelectServer={setSelectedServer}
               onRefresh={handleRefreshMCP}
+              onAdd={() => openDirectory("connectors")}
             />
           )}
         </div>
@@ -374,6 +380,7 @@ function SkillsList({
   expandedDirs,
   onToggleDir,
   onOpenFile,
+  onAdd,
 }: {
   skills: SkillInfo[];
   builtInSkills: SkillInfo[];
@@ -386,29 +393,10 @@ function SkillsList({
   expandedDirs: Set<string>;
   onToggleDir: (dirPath: string) => void;
   onOpenFile: (path: string, name: string) => void;
+  onAdd: () => void;
 }) {
   return (
     <div className="flex flex-col px-3 pb-4">
-      {/* Header */}
-      <div className="mb-3 flex items-center justify-between px-1">
-        <h2 className="text-lg font-semibold text-text">Skills</h2>
-        <button
-          className="rounded-md p-1.5 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
-          title="Add skill"
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </button>
-      </div>
-
       {/* Search */}
       <div className="relative mb-3 px-1">
         <svg
@@ -702,6 +690,7 @@ function ConnectorsList({
   selectedServer,
   onSelectServer,
   onRefresh,
+  onAdd,
 }: {
   servers: MCPServer[];
   loading: boolean;
@@ -710,11 +699,11 @@ function ConnectorsList({
   selectedServer: MCPServer | null;
   onSelectServer: (s: MCPServer) => void;
   onRefresh: () => void;
+  onAdd: () => void;
 }) {
   return (
     <div className="flex flex-col px-3 pb-4">
-      <div className="mb-3 flex items-center justify-between px-1">
-        <h2 className="text-lg font-semibold text-text">Connectors</h2>
+      <div className="mb-3 flex items-center justify-end px-1">
         <button
           onClick={onRefresh}
           disabled={loading}

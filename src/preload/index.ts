@@ -113,6 +113,12 @@ const api = {
     }[]
   > => ipcRenderer.invoke("refresh-mcp-servers"),
 
+  // Proxy fetch (bypass CORS)
+  fetchUrl: (
+    url: string,
+  ): Promise<{ ok: boolean; status: number; body: string }> =>
+    ipcRenderer.invoke("fetch-url", url),
+
   // Skills
   listSkillFiles: (
     dirPath: string,

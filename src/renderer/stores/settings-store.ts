@@ -8,6 +8,7 @@ export type Theme = "dark" | "light" | "system";
 // "bypass" = build agent with ALL permissions auto-approved
 export type PermissionMode = "ask" | "auto-accept" | "plan" | "bypass";
 export type RightPanelPage = "projects" | "customize" | "directory" | null;
+export type DirectoryCategory = "skills" | "connectors" | "plugins";
 
 interface SettingsState {
   theme: Theme;
@@ -17,6 +18,7 @@ interface SettingsState {
   settingsModalOpen: boolean;
   permissionMode: PermissionMode;
   rightPanelPage: RightPanelPage;
+  directoryCategory: DirectoryCategory;
 
   setTheme: (theme: Theme) => void;
   toggleSidebar: () => void;
@@ -25,6 +27,7 @@ interface SettingsState {
   setSettingsModalOpen: (open: boolean) => void;
   setPermissionMode: (mode: PermissionMode) => void;
   setRightPanelPage: (page: RightPanelPage) => void;
+  openDirectory: (category: DirectoryCategory) => void;
 }
 
 function getSystemTheme(): "dark" | "light" {
@@ -46,6 +49,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   settingsModalOpen: false,
   permissionMode: "ask" as PermissionMode,
   rightPanelPage: null as RightPanelPage,
+  directoryCategory: "skills" as DirectoryCategory,
 
   setTheme: (theme) => {
     applyTheme(theme);
@@ -62,6 +66,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   setRightPanelPage: (page) => set({ rightPanelPage: page }),
+  openDirectory: (category) =>
+    set({ directoryCategory: category, rightPanelPage: "directory" }),
 
   setSelectedModel: (provider, model) => {
     localStorage.setItem("opencowork-provider", provider);

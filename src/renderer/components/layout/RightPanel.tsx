@@ -9,6 +9,8 @@ import { CustomizePage } from "../pages/CustomizePage";
 import { DirectoryPage } from "../pages/DirectoryPage";
 import { ArtifactPanel } from "../artifacts/ArtifactPanel";
 import { useDirectoryInstall } from "../../hooks/useDirectoryInstall";
+// Preload skills cache so directory opens fast
+import "../../data/marketplace-fetch";
 
 const SIDEBAR_WIDTH = 280;
 const MIN_PANEL_WIDTH = 400; // minimum width for each panel in split view
@@ -20,6 +22,7 @@ export function RightPanel() {
   const toggleSidebar = useSettingsStore((s) => s.toggleSidebar);
   const rightPanelPage = useSettingsStore((s) => s.rightPanelPage);
   const setRightPanelPage = useSettingsStore((s) => s.setRightPanelPage);
+  const directoryCategory = useSettingsStore((s) => s.directoryCategory);
   const artifactPanelOpen = useArtifactStore((s) => s.panelOpen);
   const activeArtifactId = useArtifactStore((s) => s.activeArtifactId);
   const sidebarWasOpen = useRef(sidebarOpen);
@@ -44,17 +47,6 @@ export function RightPanel() {
   }, [artifactPanelOpen, activeArtifactId, sidebarOpen, setSidebarOpen]);
 
   const renderContent = () => {
-    if (rightPanelPage === "directory") {
-      return (
-        <div className="flex flex-1 flex-col overflow-hidden bg-white dark:bg-[#1a1a1a]">
-          <DirectoryPage
-            onClose={() => setRightPanelPage("customize")}
-            onInstall={handleInstall}
-            installedNames={installedNames}
-          />
-        </div>
-      );
-    }
     if (rightPanelPage === "customize") {
       return (
         <div className="flex flex-1 flex-col overflow-hidden bg-white dark:bg-[#1a1a1a]">
@@ -107,8 +99,7 @@ export function RightPanel() {
     return <HomeView />;
   };
 
-  const isFullHeight =
-    rightPanelPage === "customize" || rightPanelPage === "directory";
+  const isFullHeight = rightPanelPage === "customize";
 
   return (
     <main className="relative flex h-full flex-1 flex-col bg-surface">
