@@ -185,6 +185,25 @@ export function CustomizePage() {
     setSelectedServer(null);
   }, []);
 
+  const refreshSkills = useCallback(() => {
+    setLoading(true);
+    listSkills()
+      .then(setSkills)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleRemoveSkill = useCallback(async (location: string) => {
+    const result = await api.removeSkill(location);
+    if (result.ok) {
+      // Remove from local state immediately (sidecar may cache the old list)
+      setSkills((prev) => prev.filter((s) => s.location !== location));
+      setSelectedSkill(null);
+      setSelectedFile(null);
+    } else {
+      console.error("Remove failed:", result.output);
+    }
+  }, []);
+
   const filtered = search.trim()
     ? skills.filter(
         (s) =>
@@ -193,8 +212,12 @@ export function CustomizePage() {
       )
     : skills;
 
-  const personalSkills = filtered.filter((s) => !isBuiltInSkill(s.location));
-  const builtInSkills = filtered.filter((s) => isBuiltInSkill(s.location));
+  const nodeModuleSkills = filtered.filter((s) =>
+    s.location.includes("/node_modules/"),
+  );
+  const userSkills = filtered.filter(
+    (s) => !s.location.includes("/node_modules/"),
+  );
 
   const filteredServers = connectorSearch.trim()
     ? mcpServers.filter((s) =>
@@ -300,13 +323,14 @@ export function CustomizePage() {
 
           {section === "skills" && (
             <SkillsList
-              skills={personalSkills}
-              builtInSkills={builtInSkills}
+              skills={userSkills}
+              builtInSkills={nodeModuleSkills}
               loading={loading}
               search={search}
               onSearchChange={setSearch}
               selectedSkill={selectedSkill}
               onSelectSkill={handleSelectSkill}
+              onRemoveSkill={handleRemoveSkill}
               dirContents={dirContents}
               expandedDirs={expandedDirs}
               onToggleDir={toggleDir}
@@ -345,6 +369,7 @@ export function CustomizePage() {
             <SkillDetailView
               skill={selectedSkill}
               onBack={handleBackFromSkill}
+              onRemove={() => handleRemoveSkill(selectedSkill.location)}
             />
           ) : selectedServer ? (
             <ConnectorDetailView
@@ -376,6 +401,7 @@ function SkillsList({
   onSearchChange,
   selectedSkill,
   onSelectSkill,
+  onRemoveSkill,
   dirContents,
   expandedDirs,
   onToggleDir,
@@ -389,6 +415,7 @@ function SkillsList({
   onSearchChange: (v: string) => void;
   selectedSkill: SkillInfo | null;
   onSelectSkill: (skill: SkillInfo) => void;
+  onRemoveSkill: (name: string) => void;
   dirContents: Record<string, FileEntry[]>;
   expandedDirs: Set<string>;
   onToggleDir: (dirPath: string) => void;
@@ -427,32 +454,16 @@ function SkillsList({
           {search ? "No matching skills." : "No skills found."}
         </p>
       ) : (
-        <div className="flex flex-col gap-3">
-          {skills.length > 0 && (
-            <SkillGroup
-              title="Personal skills"
-              skills={skills}
-              selectedSkill={selectedSkill}
-              onSelectSkill={onSelectSkill}
-              dirContents={dirContents}
-              expandedDirs={expandedDirs}
-              onToggleDir={onToggleDir}
-              onOpenFile={onOpenFile}
-            />
-          )}
-          {builtInSkills.length > 0 && (
-            <SkillGroup
-              title="Built-in skills"
-              skills={builtInSkills}
-              selectedSkill={selectedSkill}
-              onSelectSkill={onSelectSkill}
-              dirContents={dirContents}
-              expandedDirs={expandedDirs}
-              onToggleDir={onToggleDir}
-              onOpenFile={onOpenFile}
-            />
-          )}
-        </div>
+        <SkillGroup
+          skills={[...skills, ...builtInSkills]}
+          selectedSkill={selectedSkill}
+          onSelectSkill={onSelectSkill}
+          onRemoveSkill={onRemoveSkill}
+          dirContents={dirContents}
+          expandedDirs={expandedDirs}
+          onToggleDir={onToggleDir}
+          onOpenFile={onOpenFile}
+        />
       )}
     </div>
   );
@@ -461,118 +472,94 @@ function SkillsList({
 /* ── Skill Group with file tree ───────────────────────────────── */
 
 function SkillGroup({
-  title,
   skills,
   selectedSkill,
   onSelectSkill,
+  onRemoveSkill,
   dirContents,
   expandedDirs,
   onToggleDir,
   onOpenFile,
 }: {
-  title: string;
   skills: SkillInfo[];
   selectedSkill: SkillInfo | null;
   onSelectSkill: (skill: SkillInfo) => void;
+  onRemoveSkill?: (name: string) => void;
   dirContents: Record<string, FileEntry[]>;
   expandedDirs: Set<string>;
   onToggleDir: (dirPath: string) => void;
   onOpenFile: (path: string, name: string) => void;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
-
   return (
-    <div>
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-medium text-text-tertiary hover:text-text"
-      >
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className={`transition-transform ${collapsed ? "-rotate-90" : ""}`}
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-        {title}
-      </button>
+    <div className="flex flex-col gap-0.5">
+      {skills.map((skill) => {
+        const isSelected = selectedSkill?.name === skill.name;
+        const dir = getSkillDir(skill.location);
+        const files = dirContents[dir];
 
-      {!collapsed && (
-        <div className="flex flex-col gap-0.5">
-          {skills.map((skill) => {
-            const isSelected = selectedSkill?.name === skill.name;
-            const dir = getSkillDir(skill.location);
-            const files = dirContents[dir];
-
-            return (
-              <div key={skill.name}>
-                {/* Skill row */}
-                <button
-                  onClick={() => onSelectSkill(skill)}
-                  className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors ${
-                    isSelected
-                      ? "bg-accent/10 text-accent"
-                      : "text-text hover:bg-surface-hover"
-                  }`}
+        return (
+          <div key={skill.name}>
+            {/* Skill row */}
+            <button
+              onClick={() => onSelectSkill(skill)}
+              className={`group/row flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors ${
+                isSelected
+                  ? "bg-accent/10 text-accent"
+                  : "text-text hover:bg-surface-hover"
+              }`}
+            >
+              <span
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
+                  isSelected
+                    ? "bg-accent/20 text-accent"
+                    : "bg-surface-tertiary text-text-tertiary"
+                }`}
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
                 >
-                  <span
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
-                      isSelected
-                        ? "bg-accent/20 text-accent"
-                        : "bg-surface-tertiary text-text-tertiary"
-                    }`}
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                    >
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                      <polyline points="14 2 14 8 20 8" />
-                    </svg>
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-sm">
-                    {skill.name}
-                  </span>
-                  {/* Chevron */}
-                  <svg
-                    width="10"
-                    height="10"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    className={`shrink-0 text-text-tertiary transition-transform ${isSelected ? "rotate-90" : ""}`}
-                  >
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
-                </button>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm">
+                {skill.name}
+              </span>
+              {/* Chevron */}
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className={`shrink-0 text-text-tertiary transition-transform ${isSelected ? "rotate-90" : ""}`}
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
 
-                {/* File tree under selected skill */}
-                {isSelected && (
-                  <div className="ml-4 border-l border-border pl-3 pt-1 pb-1">
-                    <FileTree
-                      parentDir={dir}
-                      entries={files}
-                      dirContents={dirContents}
-                      expandedDirs={expandedDirs}
-                      onToggleDir={onToggleDir}
-                      onOpenFile={onOpenFile}
-                    />
-                  </div>
-                )}
+            {/* File tree under selected skill */}
+            {isSelected && (
+              <div className="ml-4 border-l border-border pl-3 pt-1 pb-1">
+                <FileTree
+                  parentDir={dir}
+                  entries={files}
+                  dirContents={dirContents}
+                  expandedDirs={expandedDirs}
+                  onToggleDir={onToggleDir}
+                  onOpenFile={onOpenFile}
+                />
               </div>
-            );
-          })}
-        </div>
-      )}
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

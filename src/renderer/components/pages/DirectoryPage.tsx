@@ -16,7 +16,9 @@ type SortOption = "popular" | "name";
 interface Props {
   onClose: () => void;
   onInstall: (item: CatalogItem) => void;
+  onRemove?: (skillName: string) => void;
   installedNames: Set<string>;
+  installingNames?: Set<string>;
   initialCategory?: CatalogCategory;
 }
 
@@ -84,7 +86,9 @@ const CATEGORIES: {
 export function DirectoryPage({
   onClose,
   onInstall,
+  onRemove,
   installedNames,
+  installingNames,
   initialCategory,
 }: Props) {
   const [category, setCategory] = useState<CatalogCategory>(
@@ -342,7 +346,9 @@ export function DirectoryPage({
                     key={`${item.installRef}-${idx}`}
                     item={item}
                     installed={installedNames.has(item.name)}
+                    installing={installingNames?.has(item.name) ?? false}
                     onInstall={handleInstall}
+                    onRemove={onRemove}
                   />
                 ))}
               </div>
@@ -370,26 +376,35 @@ export function DirectoryPage({
 function CatalogCard({
   item,
   installed,
+  installing,
   onInstall,
+  onRemove,
 }: {
   item: CatalogItem;
   installed: boolean;
+  installing: boolean;
   onInstall: (item: CatalogItem) => void;
+  onRemove?: (skillName: string) => void;
 }) {
   return (
-    <div className="group relative flex flex-col rounded-xl border border-border bg-surface-secondary p-4 transition-colors hover:border-border/80 hover:bg-surface-hover/50">
-      {/* Install / Installed button */}
-      <button
-        onClick={() => !installed && onInstall(item)}
-        disabled={installed}
-        className={`absolute right-3 top-3 rounded-md p-1 transition-colors ${
-          installed
-            ? "text-green-400"
-            : "text-text-tertiary opacity-0 hover:bg-surface-hover hover:text-text group-hover:opacity-100"
-        }`}
-        title={installed ? "Installed" : "Install"}
-      >
-        {installed ? (
+    <div
+      className={`group relative flex flex-col rounded-xl border p-4 transition-colors ${
+        installed
+          ? "border-green-500/30 bg-green-500/5"
+          : "border-border bg-surface-secondary hover:border-border/80 hover:bg-surface-hover/50"
+      }`}
+    >
+      {/* Action button: Install / Installing / Remove */}
+      {installing ? (
+        <div className="absolute right-3 top-3 rounded-md p-1 text-accent">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+        </div>
+      ) : installed ? (
+        <button
+          onClick={() => onRemove?.(item.name)}
+          className="absolute right-3 top-3 rounded-md p-1 text-green-400 transition-colors hover:bg-red-500/10 hover:text-red-400"
+          title="Remove"
+        >
           <svg
             width="16"
             height="16"
@@ -398,9 +413,29 @@ function CatalogCard({
             stroke="currentColor"
             strokeWidth="2"
           >
-            <polyline points="20 6 9 17 4 12" />
+            <polyline className="group-hover:hidden" points="20 6 9 17 4 12" />
+            <line
+              className="hidden group-hover:block"
+              x1="18"
+              y1="6"
+              x2="6"
+              y2="18"
+            />
+            <line
+              className="hidden group-hover:block"
+              x1="6"
+              y1="6"
+              x2="18"
+              y2="18"
+            />
           </svg>
-        ) : (
+        </button>
+      ) : (
+        <button
+          onClick={() => onInstall(item)}
+          className="absolute right-3 top-3 rounded-md p-1 text-text-tertiary opacity-0 transition-colors hover:bg-surface-hover hover:text-text group-hover:opacity-100"
+          title="Install"
+        >
           <svg
             width="16"
             height="16"
@@ -411,8 +446,8 @@ function CatalogCard({
           >
             <path d="M12 5v14M5 12h14" />
           </svg>
-        )}
-      </button>
+        </button>
+      )}
 
       {/* Name with icon */}
       <div className="mb-1 flex items-center gap-2 pr-6">

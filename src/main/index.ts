@@ -103,6 +103,76 @@ ipcMain.handle("restart-sidecar", async () => {
   return url;
 });
 
+// Skills management
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+const execFileAsync = promisify(execFile);
+
+ipcMain.handle("list-installed-skills", async () => {
+  try {
+    // Check both global and project skills directories
+    const dirs = [
+      join(homedir(), ".claude", "skills"),
+      join(homedir(), ".agents", "skills"),
+    ];
+    const installed = new Set<string>();
+    for (const dir of dirs) {
+      if (existsSync(dir)) {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          if (entry.isDirectory() && !entry.name.startsWith(".")) {
+            installed.add(entry.name);
+          }
+        }
+      }
+    }
+    return Array.from(installed);
+  } catch {
+    return [];
+  }
+});
+
+ipcMain.handle(
+  "install-skill",
+  async (_event, source: string, skillName: string) => {
+    try {
+      const { stdout, stderr } = await execFileAsync(
+        "npx",
+        [
+          "skills",
+          "add",
+          source,
+          "--skill",
+          skillName,
+          "-g",
+          "-y",
+          "--agent",
+          "claude-code",
+        ],
+        { timeout: 120_000, env: { ...process.env, FORCE_COLOR: "0" } },
+      );
+      return { ok: true, output: stdout || stderr };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      return { ok: false, output: msg };
+    }
+  },
+);
+
+ipcMain.handle("remove-skill", async (_event, location: string) => {
+  try {
+    // location is the SKILL.md path — remove its parent directory
+    const skillDir = join(location, "..");
+    if (existsSync(skillDir)) {
+      rmSync(skillDir, { recursive: true, force: true });
+      return { ok: true, output: "Removed" };
+    }
+    return { ok: false, output: "Not found" };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return { ok: false, output: msg };
+  }
+});
+
 // Proxy fetch (bypass CORS for renderer)
 ipcMain.handle("fetch-url", async (_event, url: string) => {
   const res = await fetch(url);

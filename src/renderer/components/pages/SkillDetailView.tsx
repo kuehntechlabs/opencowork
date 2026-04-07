@@ -7,6 +7,7 @@ import type { SkillInfo } from "../../api/client";
 interface Props {
   skill: SkillInfo;
   onBack: () => void;
+  onRemove?: () => void;
 }
 
 function getSkillScope(location: string): string {
@@ -28,7 +29,7 @@ function getSkillDir(location: string): string {
   return parts.join("/");
 }
 
-export function SkillDetailView({ skill, onBack }: Props) {
+export function SkillDetailView({ skill, onBack, onRemove }: Props) {
   const [viewMode, setViewMode] = useState<"rendered" | "source">("rendered");
 
   const scope = getSkillScope(skill.location);
@@ -56,9 +57,18 @@ export function SkillDetailView({ skill, onBack }: Props) {
               <polyline points="12 19 5 12 12 5" />
             </svg>
           </button>
-          <h3 className="min-w-0 truncate text-lg font-semibold text-text">
+          <h3 className="min-w-0 flex-1 truncate text-lg font-semibold text-text">
             {skill.name}
           </h3>
+          {onRemove && (
+            <button
+              onClick={onRemove}
+              className="shrink-0 rounded-md px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/10"
+              title="Remove skill"
+            >
+              Remove
+            </button>
+          )}
         </div>
 
         {/* Metadata */}

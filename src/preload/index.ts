@@ -113,6 +113,17 @@ const api = {
     }[]
   > => ipcRenderer.invoke("refresh-mcp-servers"),
 
+  // Skills management
+  listInstalledSkills: (): Promise<string[]> =>
+    ipcRenderer.invoke("list-installed-skills"),
+  installSkill: (
+    source: string,
+    skillName: string,
+  ): Promise<{ ok: boolean; output: string }> =>
+    ipcRenderer.invoke("install-skill", source, skillName),
+  removeSkill: (skillName: string): Promise<{ ok: boolean; output: string }> =>
+    ipcRenderer.invoke("remove-skill", skillName),
+
   // Proxy fetch (bypass CORS)
   fetchUrl: (
     url: string,

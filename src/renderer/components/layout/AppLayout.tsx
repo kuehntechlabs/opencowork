@@ -11,7 +11,8 @@ export function AppLayout() {
   const rightPanelPage = useSettingsStore((s) => s.rightPanelPage);
   const setRightPanelPage = useSettingsStore((s) => s.setRightPanelPage);
   const directoryCategory = useSettingsStore((s) => s.directoryCategory);
-  const { installedNames, handleInstall } = useDirectoryInstall();
+  const { installedNames, installing, handleInstall, handleRemove } =
+    useDirectoryInstall();
 
   return (
     <div className="relative flex h-full">
@@ -31,7 +32,9 @@ export function AppLayout() {
             <DirectoryPage
               onClose={() => setRightPanelPage("customize")}
               onInstall={handleInstall}
+              onRemove={handleRemove}
               installedNames={installedNames}
+              installingNames={installing}
               initialCategory={directoryCategory}
             />
           </div>
