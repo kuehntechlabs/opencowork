@@ -12,12 +12,22 @@ export interface CatalogItem {
   mcpCommand?: string[];
   /** For MCPs: required environment variables { VAR_NAME: "description" } */
   mcpEnv?: Record<string, string>;
+  /** For remote MCPs: the server URL */
+  mcpUrl?: string;
+  /** For remote MCPs: transport type (e.g. "streamable-http", "sse") */
+  mcpTransport?: string;
+  /** For remote MCPs: required headers { HeaderName: "description" } */
+  mcpHeaders?: Record<string, string>;
   /** Tags for filtering */
   tags?: string[];
   /** Logo/icon URL (e.g. GitHub avatar) */
   iconUrl?: string;
   /** Number of skills inside (for plugin collections) */
   skillCount?: number;
+  /** Website URL for the server */
+  websiteUrl?: string;
+  /** Version string */
+  version?: string;
 }
 
 function k(n: number): string {

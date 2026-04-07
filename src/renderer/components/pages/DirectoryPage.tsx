@@ -10,6 +10,7 @@ import {
   fetchDefaultSkills,
   searchSkills,
 } from "../../data/marketplace-fetch";
+import { fetchRegistryServers } from "../../data/mcp-registry-fetch";
 
 type SortOption = "popular" | "name";
 
@@ -102,6 +103,7 @@ export function DirectoryPage({
   // Live data
   const [skills, setSkills] = useState<CatalogItem[]>([]);
   const [plugins, setPlugins] = useState<CatalogItem[]>([]);
+  const [connectors, setConnectors] = useState<CatalogItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Search
@@ -118,9 +120,9 @@ export function DirectoryPage({
 
   // Load data on mount / category change
   useEffect(() => {
-    if (category === "connectors") return;
     if (category === "plugins" && plugins.length > 0) return;
     if (category === "skills" && skills.length > 0) return;
+    if (category === "connectors" && connectors.length > 0) return;
 
     setLoading(true);
     setPage(1);
@@ -133,6 +135,16 @@ export function DirectoryPage({
       }).finally(() => {
         if (fetchId.current === id) setLoading(false);
       });
+    } else if (category === "connectors") {
+      fetchRegistryServers()
+        .then((items) => {
+          if (fetchId.current !== id) return;
+          // Use registry data, fall back to static catalog if empty
+          setConnectors(items.length > 0 ? items : CONNECTORS);
+        })
+        .finally(() => {
+          if (fetchId.current === id) setLoading(false);
+        });
     } else {
       fetchDefaultSkills()
         .then((items) => {
@@ -173,7 +185,7 @@ export function DirectoryPage({
     let list: CatalogItem[];
 
     if (category === "connectors") {
-      list = CONNECTORS;
+      list = connectors.length > 0 ? connectors : CONNECTORS;
     } else if (category === "skills" && searchResults) {
       list = searchResults;
     } else if (category === "skills") {
@@ -200,7 +212,7 @@ export function DirectoryPage({
     }
 
     return list;
-  }, [category, search, sort, skills, plugins, searchResults]);
+  }, [category, search, sort, skills, plugins, connectors, searchResults]);
 
   // Paginate
   const totalItems = allItems.length;
@@ -216,7 +228,7 @@ export function DirectoryPage({
     [onInstall],
   );
 
-  const isLoading = loading && category !== "connectors";
+  const isLoading = loading;
 
   return (
     <div className="flex h-full min-h-0">
@@ -329,7 +341,9 @@ export function DirectoryPage({
             <div className="py-12 text-center">
               <div className="mb-3 inline-block h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
               <p className="text-sm text-text-tertiary">
-                Loading from skills.sh...
+                {category === "connectors"
+                  ? "Loading from MCP Registry..."
+                  : "Loading from skills.sh..."}
               </p>
             </div>
           ) : items.length === 0 ? (
@@ -464,9 +478,31 @@ function CatalogCard({
         <h3 className="truncate text-sm font-medium text-text">{item.name}</h3>
       </div>
 
-      {/* Author + downloads/skill count */}
+      {/* Author + metadata */}
       <div className="mb-2 flex items-center gap-1.5 text-[11px] text-text-tertiary">
         <span>{item.author}</span>
+        {item.mcpCommand && (
+          <>
+            <span className="text-text-tertiary/50">&bull;</span>
+            <span className="rounded bg-blue-500/10 px-1 py-0.5 text-[10px] text-blue-400">
+              stdio
+            </span>
+          </>
+        )}
+        {item.mcpUrl && (
+          <>
+            <span className="text-text-tertiary/50">&bull;</span>
+            <span className="rounded bg-purple-500/10 px-1 py-0.5 text-[10px] text-purple-400">
+              {item.mcpTransport === "sse" ? "sse" : "http"}
+            </span>
+          </>
+        )}
+        {item.version && (
+          <>
+            <span className="text-text-tertiary/50">&bull;</span>
+            <span>v{item.version}</span>
+          </>
+        )}
         {(item.downloads > 0 || item.skillCount) && (
           <>
             <span className="text-text-tertiary/50">&bull;</span>

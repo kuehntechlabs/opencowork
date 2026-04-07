@@ -4,6 +4,7 @@ import { useSettingsStore } from "../../stores/settings-store";
 import { ProviderSettingsModal } from "../settings/ProviderSettingsModal";
 import { NewProjectModal } from "../home/NewProjectModal";
 import { DirectoryPage } from "../pages/DirectoryPage";
+import { ConfigPromptModal } from "../pages/ConfigPromptModal";
 import { useDirectoryInstall } from "../../hooks/useDirectoryInstall";
 
 export function AppLayout() {
@@ -11,8 +12,15 @@ export function AppLayout() {
   const rightPanelPage = useSettingsStore((s) => s.rightPanelPage);
   const setRightPanelPage = useSettingsStore((s) => s.setRightPanelPage);
   const directoryCategory = useSettingsStore((s) => s.directoryCategory);
-  const { installedNames, installing, handleInstall, handleRemove } =
-    useDirectoryInstall();
+  const {
+    installedNames,
+    installing,
+    handleInstall,
+    handleRemove,
+    configPrompt,
+    submitPrompt,
+    cancelPrompt,
+  } = useDirectoryInstall();
 
   return (
     <div className="relative flex h-full">
@@ -39,6 +47,15 @@ export function AppLayout() {
             />
           </div>
         </>
+      )}
+
+      {/* Config prompt modal for env vars / headers */}
+      {configPrompt && (
+        <ConfigPromptModal
+          prompt={configPrompt}
+          onSubmit={submitPrompt}
+          onCancel={cancelPrompt}
+        />
       )}
     </div>
   );

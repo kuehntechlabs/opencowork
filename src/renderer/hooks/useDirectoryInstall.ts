@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { CatalogItem } from "../data/marketplace-catalog";
 
 const api = (
@@ -7,16 +7,61 @@ const api = (
   }
 ).api;
 
+/** Describes a pending prompt modal for collecting key-value config */
+export interface ConfigPrompt {
+  /** Title shown in the modal */
+  title: string;
+  /** Fields to collect: key → description */
+  fields: { key: string; label: string; secret?: boolean }[];
+}
+
 export function useDirectoryInstall() {
   const [installedNames, setInstalledNames] = useState<Set<string>>(new Set());
   const [installing, setInstalling] = useState<Set<string>>(new Set());
 
-  const refreshInstalled = useCallback(async () => {
-    const names = await api.listInstalledSkills();
-    setInstalledNames(new Set(names));
+  // Prompt modal state
+  const [configPrompt, setConfigPrompt] = useState<ConfigPrompt | null>(null);
+  const promptResolve = useRef<
+    ((values: Record<string, string> | null) => void) | null
+  >(null);
+
+  /** Show a modal and wait for the user to fill in values (or cancel) */
+  const promptForValues = useCallback(
+    (prompt: ConfigPrompt): Promise<Record<string, string> | null> => {
+      return new Promise((resolve) => {
+        promptResolve.current = resolve;
+        setConfigPrompt(prompt);
+      });
+    },
+    [],
+  );
+
+  /** Called by the modal when the user submits */
+  const submitPrompt = useCallback((values: Record<string, string>) => {
+    promptResolve.current?.(values);
+    promptResolve.current = null;
+    setConfigPrompt(null);
   }, []);
 
-  // Load installed skills on mount
+  /** Called by the modal when the user cancels */
+  const cancelPrompt = useCallback(() => {
+    promptResolve.current?.(null);
+    promptResolve.current = null;
+    setConfigPrompt(null);
+  }, []);
+
+  const refreshInstalled = useCallback(async () => {
+    const [skillNames, mcpServers] = await Promise.all([
+      api.listInstalledSkills(),
+      api.listMCPServers().catch(() => []),
+    ]);
+    const names = new Set(skillNames);
+    for (const s of mcpServers) {
+      names.add(s.name);
+    }
+    setInstalledNames(names);
+  }, []);
+
   useEffect(() => {
     refreshInstalled();
   }, [refreshInstalled]);
@@ -24,27 +69,86 @@ export function useDirectoryInstall() {
   const handleInstall = useCallback(
     async (item: CatalogItem) => {
       try {
-        if (item.category === "connectors" && item.mcpCommand) {
-          const config: Record<string, unknown> = {
-            type: "local",
-            command: item.mcpCommand,
-          };
+        if (item.category === "connectors") {
+          const configName = item.name
+            .toLowerCase()
+            .replace(/[^a-z0-9-]/g, "-");
 
-          // Prompt for required env vars
-          if (item.mcpEnv) {
-            const env: Record<string, string> = {};
-            for (const [key, desc] of Object.entries(item.mcpEnv)) {
-              const value = window.prompt(
-                `${desc}\n\nEnvironment variable: ${key}`,
-              );
-              if (!value) return; // user cancelled
-              env[key] = value;
+          if (item.mcpCommand) {
+            const config: Record<string, unknown> = {
+              type: "local",
+              command: item.mcpCommand,
+            };
+
+            if (item.mcpEnv) {
+              const fields = Object.entries(item.mcpEnv).map(([key, desc]) => ({
+                key,
+                label: desc,
+                secret:
+                  key.toLowerCase().includes("key") ||
+                  key.toLowerCase().includes("token") ||
+                  key.toLowerCase().includes("secret"),
+              }));
+              const values = await promptForValues({
+                title: `Configure ${item.name}`,
+                fields,
+              });
+              if (!values) return; // cancelled
+              config.env = values;
             }
-            config.env = env;
+
+            setInstalling((prev) => new Set([...prev, item.name]));
+            await api.writeMCPConfig({ [configName]: config });
+            // Restart sidecar so opencode picks up the new MCP server
+            await api.restartSidecar().catch(() => {});
+            setInstalling((prev) => {
+              const next = new Set(prev);
+              next.delete(item.name);
+              return next;
+            });
+            setInstalledNames((prev) => new Set([...prev, item.name]));
+            return;
           }
 
-          await api.writeMCPConfig({ [item.name]: config });
-          setInstalledNames((prev) => new Set([...prev, item.name]));
+          if (item.mcpUrl) {
+            const config: Record<string, unknown> = {
+              type: "remote",
+              url: item.mcpUrl,
+            };
+
+            if (item.mcpHeaders) {
+              const fields = Object.entries(item.mcpHeaders).map(
+                ([key, desc]) => ({
+                  key,
+                  label: desc,
+                  secret: key.toLowerCase() === "authorization",
+                }),
+              );
+              const values = await promptForValues({
+                title: `Configure ${item.name}`,
+                fields,
+              });
+              if (!values) return; // cancelled
+              config.headers = values;
+            }
+
+            setInstalling((prev) => new Set([...prev, item.name]));
+            await api.writeMCPConfig({ [configName]: config });
+            await api.restartSidecar().catch(() => {});
+            setInstalling((prev) => {
+              const next = new Set(prev);
+              next.delete(item.name);
+              return next;
+            });
+            setInstalledNames((prev) => new Set([...prev, item.name]));
+            return;
+          }
+
+          // No env/headers needed — just install directly
+          if (!item.mcpCommand && !item.mcpUrl) {
+            console.warn("Connector has no install method:", item.name);
+            return;
+          }
           return;
         }
 
@@ -72,7 +176,6 @@ export function useDirectoryInstall() {
           });
 
           if (result.ok) {
-            // Refresh the full list so CustomizePage also sees the new skill
             await refreshInstalled();
           } else {
             console.error("Skill install failed:", result.output);
@@ -88,7 +191,7 @@ export function useDirectoryInstall() {
         });
       }
     },
-    [refreshInstalled],
+    [refreshInstalled, promptForValues],
   );
 
   const handleRemove = useCallback(
@@ -127,5 +230,9 @@ export function useDirectoryInstall() {
     handleInstall,
     handleRemove,
     refreshInstalled,
+    // Prompt modal state
+    configPrompt,
+    submitPrompt,
+    cancelPrompt,
   };
 }

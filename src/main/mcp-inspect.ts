@@ -226,6 +226,152 @@ async function introspectStdioServer(
   return info;
 }
 
+// ── Remote MCP introspection (Streamable HTTP / SSE) ────────────
+
+/** Send a JSON-RPC request to a remote MCP server via HTTP POST */
+async function rpcPost(
+  url: string,
+  method: string,
+  params: Record<string, unknown>,
+  id: number,
+  headers?: Record<string, string>,
+  sessionId?: string,
+): Promise<{ result: unknown; sessionId?: string }> {
+  const reqHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+    ...headers,
+  };
+  if (sessionId) reqHeaders["Mcp-Session-Id"] = sessionId;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: reqHeaders,
+      body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+      signal: controller.signal,
+    });
+
+    const newSessionId =
+      res.headers.get("mcp-session-id") || sessionId || undefined;
+
+    const contentType = res.headers.get("content-type") || "";
+
+    if (contentType.includes("text/event-stream")) {
+      // SSE response — parse events to find our JSON-RPC response
+      const text = await res.text();
+      const lines = text.split("\n");
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = line.slice(6).trim();
+          if (!data || data === "[DONE]") continue;
+          try {
+            const msg = JSON.parse(data);
+            if (msg.id === id) {
+              if (msg.error) {
+                throw new Error(msg.error.message || "Remote RPC error");
+              }
+              return { result: msg.result, sessionId: newSessionId };
+            }
+          } catch {
+            // skip non-JSON SSE data
+          }
+        }
+      }
+      throw new Error("No matching response in SSE stream");
+    }
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+
+    const json = await res.json();
+    if (json.error) {
+      throw new Error(json.error.message || "Remote RPC error");
+    }
+    return { result: json.result, sessionId: newSessionId };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Introspect a remote MCP server via Streamable HTTP */
+async function introspectRemoteServer(
+  name: string,
+  url: string,
+  headers?: Record<string, string>,
+): Promise<MCPServerInfo> {
+  const info: MCPServerInfo = {
+    name,
+    type: "remote",
+    url,
+    tools: [],
+    prompts: [],
+    resources: [],
+  };
+
+  let nextId = 1;
+
+  try {
+    // Initialize
+    const initRes = await rpcPost(
+      url,
+      "initialize",
+      {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "opencowork", version: "1.0.0" },
+      },
+      nextId++,
+      headers,
+    );
+
+    const sessionId = initRes.sessionId;
+
+    // Send initialized notification (fire-and-forget)
+    rpcPost(
+      url,
+      "notifications/initialized",
+      {},
+      nextId++,
+      headers,
+      sessionId,
+    ).catch(() => {});
+
+    // Query capabilities in parallel
+    const [toolsResult, promptsResult, resourcesResult] =
+      await Promise.allSettled([
+        rpcPost(url, "tools/list", {}, nextId++, headers, sessionId),
+        rpcPost(url, "prompts/list", {}, nextId++, headers, sessionId),
+        rpcPost(url, "resources/list", {}, nextId++, headers, sessionId),
+      ]);
+
+    if (toolsResult.status === "fulfilled" && toolsResult.value.result) {
+      const r = toolsResult.value.result as { tools?: MCPTool[] };
+      info.tools = r.tools || [];
+    }
+    if (promptsResult.status === "fulfilled" && promptsResult.value.result) {
+      const r = promptsResult.value.result as { prompts?: MCPPrompt[] };
+      info.prompts = r.prompts || [];
+    }
+    if (
+      resourcesResult.status === "fulfilled" &&
+      resourcesResult.value.result
+    ) {
+      const r = resourcesResult.value.result as { resources?: MCPResource[] };
+      info.resources = r.resources || [];
+    }
+  } catch (err) {
+    info.error = err instanceof Error ? err.message : String(err);
+    log.warn(`MCP remote introspect failed for ${name}:`, err);
+  }
+
+  return info;
+}
+
 // Cache to avoid re-spawning servers constantly
 let cache: { data: MCPServerInfo[]; timestamp: number } | null = null;
 const CACHE_TTL = 60_000; // 1 minute
@@ -247,12 +393,16 @@ export async function listMCPServers(): Promise<MCPServerInfo[]> {
       const command = entry.command as string[] | undefined;
       const env = entry.env as Record<string, string> | undefined;
       const url = entry.url as string | undefined;
+      const headers = entry.headers as Record<string, string> | undefined;
 
       if (type === "local" && command?.length) {
         return introspectStdioServer(name, command, env);
       }
 
-      // For non-local types, return config only (no introspection yet)
+      if (type === "remote" && url) {
+        return introspectRemoteServer(name, url, headers);
+      }
+
       return {
         name,
         type,
@@ -261,10 +411,6 @@ export async function listMCPServers(): Promise<MCPServerInfo[]> {
         tools: [],
         prompts: [],
         resources: [],
-        error:
-          type !== "local"
-            ? `Introspection not supported for type "${type}"`
-            : undefined,
       } satisfies MCPServerInfo;
     }),
   );
