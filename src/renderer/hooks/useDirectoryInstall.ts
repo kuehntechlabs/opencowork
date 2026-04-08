@@ -1,5 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { CatalogItem } from "../data/marketplace-catalog";
+import { setBaseUrl, checkHealth } from "../api/client";
+import { connectSSE, disconnectSSE } from "../api/events";
+import { useServerStore } from "../stores/server-store";
 
 const api = (
   window as unknown as {
@@ -13,6 +16,26 @@ export interface ConfigPrompt {
   title: string;
   /** Fields to collect: key → description */
   fields: { key: string; label: string; secret?: boolean }[];
+}
+
+/** Restart the sidecar and reconnect the renderer to the new URL */
+async function restartAndReconnect(): Promise<void> {
+  const newUrl = await api.restartSidecar();
+  if (newUrl) {
+    setBaseUrl(newUrl);
+    const serverStore = useServerStore.getState();
+    serverStore.setUrl(newUrl);
+    disconnectSSE();
+
+    for (let i = 0; i < 15; i++) {
+      if (await checkHealth()) {
+        serverStore.setConnected(true);
+        connectSSE();
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
 }
 
 export function useDirectoryInstall() {
@@ -100,7 +123,7 @@ export function useDirectoryInstall() {
             setInstalling((prev) => new Set([...prev, item.name]));
             await api.writeMCPConfig({ [configName]: config });
             // Restart sidecar so opencode picks up the new MCP server
-            await api.restartSidecar().catch(() => {});
+            await restartAndReconnect();
             setInstalling((prev) => {
               const next = new Set(prev);
               next.delete(item.name);
@@ -134,7 +157,7 @@ export function useDirectoryInstall() {
 
             setInstalling((prev) => new Set([...prev, item.name]));
             await api.writeMCPConfig({ [configName]: config });
-            await api.restartSidecar().catch(() => {});
+            await restartAndReconnect();
             setInstalling((prev) => {
               const next = new Set(prev);
               next.delete(item.name);
@@ -203,7 +226,7 @@ export function useDirectoryInstall() {
           // Remove MCP server from config
           const configName = itemName.toLowerCase().replace(/[^a-z0-9-]/g, "-");
           await api.removeMCPConfig(configName);
-          await api.restartSidecar().catch(() => {});
+          await restartAndReconnect();
           setInstalling((prev) => {
             const next = new Set(prev);
             next.delete(itemName);

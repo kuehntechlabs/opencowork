@@ -85,6 +85,17 @@ const api = {
       error?: string;
     }[]
   > => ipcRenderer.invoke("list-mcp-servers"),
+  listMCPServersFast: (): Promise<
+    {
+      name: string;
+      type: string;
+      command?: string[];
+      url?: string;
+      tools: [];
+      prompts: [];
+      resources: [];
+    }[]
+  > => ipcRenderer.invoke("list-mcp-servers-fast"),
   refreshMCPServers: (): Promise<
     {
       name: string;

@@ -79,6 +79,7 @@ export function CustomizePage() {
   // MCP servers
   const [mcpServers, setMcpServers] = useState<MCPServer[]>([]);
   const [mcpLoading, setMcpLoading] = useState(false);
+  const [mcpIntrospecting, setMcpIntrospecting] = useState(false);
   const [selectedServer, setSelectedServer] = useState<MCPServer | null>(null);
   const [connectorSearch, setConnectorSearch] = useState("");
 
@@ -97,15 +98,34 @@ export function CustomizePage() {
       .finally(() => setLoading(false));
   }, [section]);
 
-  // Load MCP servers when section becomes "connectors"
+  // Load MCP servers when section becomes "connectors":
+  // 1) Show stubs instantly from config, 2) introspect details in background
   useEffect(() => {
     if (section !== "connectors") return;
     setMcpLoading(true);
     api
-      .listMCPServers()
-      .then(setMcpServers)
-      .catch(() => setMcpServers([]))
-      .finally(() => setMcpLoading(false));
+      .listMCPServersFast()
+      .then((stubs) => {
+        setMcpServers(stubs);
+        setMcpLoading(false);
+        // Now introspect in the background
+        setMcpIntrospecting(true);
+        api
+          .listMCPServers()
+          .then((full) => {
+            setMcpServers(full);
+            // Update selected server if it was refreshed
+            setSelectedServer((prev) =>
+              prev ? (full.find((s) => s.name === prev.name) ?? prev) : null,
+            );
+          })
+          .catch(() => {})
+          .finally(() => setMcpIntrospecting(false));
+      })
+      .catch(() => {
+        setMcpServers([]);
+        setMcpLoading(false);
+      });
   }, [section]);
 
   const handleRefreshMCP = useCallback(() => {
@@ -354,6 +374,7 @@ export function CustomizePage() {
             <ConnectorsList
               servers={filteredServers}
               loading={mcpLoading}
+              introspecting={mcpIntrospecting}
               search={connectorSearch}
               onSearchChange={setConnectorSearch}
               selectedServer={selectedServer}
@@ -385,6 +406,7 @@ export function CustomizePage() {
           ) : selectedServer ? (
             <ConnectorDetailView
               server={selectedServer}
+              introspecting={mcpIntrospecting}
               onBack={() => setSelectedServer(null)}
               onRemove={handleRemoveConnector}
             />
@@ -684,6 +706,7 @@ function FileTree({
 function ConnectorsList({
   servers,
   loading,
+  introspecting,
   search,
   onSearchChange,
   selectedServer,
@@ -693,6 +716,7 @@ function ConnectorsList({
 }: {
   servers: MCPServer[];
   loading: boolean;
+  introspecting: boolean;
   search: string;
   onSearchChange: (v: string) => void;
   selectedServer: MCPServer | null;
@@ -702,29 +726,7 @@ function ConnectorsList({
 }) {
   return (
     <div className="flex flex-col px-3 pb-4">
-      <div className="mb-3 flex items-center justify-end px-1">
-        <button
-          onClick={onRefresh}
-          disabled={loading}
-          className="rounded-md p-1.5 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text disabled:opacity-50"
-          title="Refresh"
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            className={loading ? "animate-spin" : ""}
-          >
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-          </svg>
-        </button>
-      </div>
-
-      <div className="relative mb-3 px-1">
+      <div className="relative mb-3 mt-3 px-1">
         <svg
           width="13"
           height="13"
@@ -798,9 +800,11 @@ function ConnectorsList({
                   <span className="block truncate text-[11px] text-text-tertiary">
                     {server.error
                       ? "Error"
-                      : totalItems > 0
-                        ? `${totalItems} item${totalItems !== 1 ? "s" : ""}`
-                        : server.type}
+                      : introspecting && totalItems === 0
+                        ? "Loading\u2026"
+                        : totalItems > 0
+                          ? `${totalItems} item${totalItems !== 1 ? "s" : ""}`
+                          : server.type}
                   </span>
                 </div>
                 <svg
@@ -829,14 +833,19 @@ type DetailTab = "tools" | "prompts" | "resources";
 
 function ConnectorDetailView({
   server,
+  introspecting,
   onBack,
   onRemove,
 }: {
   server: MCPServer;
+  introspecting?: boolean;
   onBack: () => void;
   onRemove?: (serverName: string) => void;
 }) {
   const [tab, setTab] = useState<DetailTab>("tools");
+  const totalItems =
+    server.tools.length + server.prompts.length + server.resources.length;
+  const isLoading = introspecting && totalItems === 0 && !server.error;
 
   const tabs: { key: DetailTab; label: string; count: number }[] = [
     { key: "tools", label: "Tools", count: server.tools.length },
@@ -936,10 +945,20 @@ function ConnectorDetailView({
       </div>
 
       {/* Tab content */}
-      <div className="px-6 pt-4 pb-8">
-        {tab === "tools" && <ToolsTab tools={server.tools} />}
-        {tab === "prompts" && <PromptsTab prompts={server.prompts} />}
-        {tab === "resources" && <ResourcesTab resources={server.resources} />}
+      <div className="min-w-0 px-6 pt-4 pb-8">
+        {isLoading ? (
+          <p className="text-sm text-text-tertiary">
+            Loading tools and resources...
+          </p>
+        ) : (
+          <>
+            {tab === "tools" && <ToolsTab tools={server.tools} />}
+            {tab === "prompts" && <PromptsTab prompts={server.prompts} />}
+            {tab === "resources" && (
+              <ResourcesTab resources={server.resources} />
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -980,11 +999,11 @@ function ToolsTab({ tools }: { tools: MCPTool[] }) {
         return (
           <div
             key={tool.name}
-            className="rounded-lg border border-border bg-surface-secondary"
+            className="min-w-0 rounded-lg border border-border bg-surface-secondary"
           >
             <button
               onClick={() => toggle(tool.name)}
-              className="flex w-full items-center gap-2 px-4 py-3 text-left"
+              className="flex w-full items-center gap-2 overflow-hidden px-4 py-3 text-left"
             >
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-blue-500/10 text-blue-400">
                 <svg
@@ -1003,7 +1022,7 @@ function ToolsTab({ tools }: { tools: MCPTool[] }) {
                   {tool.name}
                 </span>
                 {tool.description && (
-                  <span className="block truncate text-xs text-text-tertiary">
+                  <span className="block text-xs leading-relaxed text-text-tertiary line-clamp-2">
                     {tool.description}
                   </span>
                 )}
@@ -1037,23 +1056,25 @@ function ToolsTab({ tools }: { tools: MCPTool[] }) {
                       {Object.entries(properties).map(([name, prop]) => (
                         <div
                           key={name}
-                          className="flex items-start gap-2 rounded-md bg-surface px-3 py-2"
+                          className="rounded-md bg-surface px-3 py-2"
                         >
-                          <code className="shrink-0 font-mono text-xs text-accent">
-                            {name}
-                          </code>
-                          {required.includes(name) && (
-                            <span className="shrink-0 rounded bg-red-500/10 px-1 py-0.5 text-[9px] font-medium text-red-400">
-                              required
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                            <code className="font-mono text-xs text-accent">
+                              {name}
+                            </code>
+                            <span className="text-[11px] text-text-tertiary">
+                              {(prop.type as string) || "any"}
                             </span>
-                          )}
-                          <span className="shrink-0 text-[11px] text-text-tertiary">
-                            {(prop.type as string) || "any"}
-                          </span>
+                            {required.includes(name) && (
+                              <span className="rounded bg-red-500/10 px-1 py-0.5 text-[9px] font-medium text-red-400">
+                                required
+                              </span>
+                            )}
+                          </div>
                           {prop.description && (
-                            <span className="text-xs text-text-secondary">
+                            <p className="mt-1 text-xs leading-relaxed text-text-secondary">
                               {prop.description as string}
-                            </span>
+                            </p>
                           )}
                         </div>
                       ))}

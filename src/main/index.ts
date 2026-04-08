@@ -30,7 +30,11 @@ import {
   removeMCPConfig,
   restartSidecar,
 } from "./sidecar";
-import { listMCPServers, clearMCPCache } from "./mcp-inspect";
+import {
+  listMCPServers,
+  listMCPServersFast,
+  clearMCPCache,
+} from "./mcp-inspect";
 import { createMenu } from "./menu";
 
 let mainWindow: BrowserWindow | null = null;
@@ -193,6 +197,7 @@ ipcMain.handle("remove-mcp-config", (_event, serverName: string) =>
 
 // MCP introspection
 ipcMain.handle("list-mcp-servers", () => listMCPServers());
+ipcMain.handle("list-mcp-servers-fast", () => listMCPServersFast());
 ipcMain.handle("refresh-mcp-servers", () => {
   clearMCPCache();
   return listMCPServers();

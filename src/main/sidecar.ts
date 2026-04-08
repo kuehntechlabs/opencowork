@@ -47,16 +47,21 @@ function ensureOpencodeConfig(): void {
   }
 }
 
-/** Try to kill any existing process on the given port */
+/** Try to kill any existing process listening on the given port */
 function killProcessOnPort(port: number): void {
   try {
-    const pid = execFileSync("lsof", ["-ti", `tcp:${port}`], {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
-    if (pid) {
-      log.info(`Killing existing process ${pid} on port ${port}`);
-      process.kill(parseInt(pid, 10), "SIGTERM");
+    const output = execFileSync(
+      "lsof",
+      ["-ti", `tcp:${port}`, "-sTCP:LISTEN"],
+      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+    ).trim();
+    if (output) {
+      // Kill only the first listening PID (the sidecar), not client connections
+      const pid = parseInt(output.split("\n")[0]!, 10);
+      if (pid && pid !== process.pid) {
+        log.info(`Killing existing process ${pid} on port ${port}`);
+        process.kill(pid, "SIGTERM");
+      }
     }
   } catch {
     // No process on port, that's fine

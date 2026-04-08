@@ -422,3 +422,21 @@ export async function listMCPServers(): Promise<MCPServerInfo[]> {
 export function clearMCPCache(): void {
   cache = null;
 }
+
+/** Return server stubs instantly from config (no introspection) */
+export function listMCPServersFast(): MCPServerInfo[] {
+  const config = readOpencodeConfig();
+  const mcp = config.mcp as Record<string, Record<string, unknown>> | undefined;
+
+  if (!mcp) return [];
+
+  return Object.entries(mcp).map(([name, entry]) => ({
+    name,
+    type: (entry.type as string) || "local",
+    command: entry.command as string[] | undefined,
+    url: entry.url as string | undefined,
+    tools: [],
+    prompts: [],
+    resources: [],
+  }));
+}
