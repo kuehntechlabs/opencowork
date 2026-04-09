@@ -1,0 +1,44 @@
+name: Auto Tag on Version Change
+
+on:
+  push:
+    branches: [main]
+    paths: [package.json]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.check.outputs.new_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for version change
+        id: check
+        run: |
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          git show HEAD~1:package.json > /tmp/old-package.json 2>/dev/null || true
+          OLD_VERSION=$(node -p "try{require('/tmp/old-package.json').version}catch(e){''}")
+
+          if [ "$NEW_VERSION" != "$OLD_VERSION" ]; then
+            TAG="v${NEW_VERSION}"
+            if git rev-parse "$TAG" >/dev/null 2>&1; then
+              echo "Tag $TAG already exists, skipping"
+            else
+              echo "Version changed: $OLD_VERSION → $NEW_VERSION"
+              echo "new_tag=$TAG" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "Version unchanged ($NEW_VERSION), skipping"
+          fi
+
+      - name: Create tag
+        if: steps.check.outputs.new_tag
+        run: |
+          git tag ${{ steps.check.outputs.new_tag }}
+          git push origin ${{ steps.check.outputs.new_tag }}

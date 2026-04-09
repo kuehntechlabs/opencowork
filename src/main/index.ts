@@ -108,6 +108,37 @@ ipcMain.handle("restart-sidecar", async () => {
   return url;
 });
 
+ipcMain.handle("sync-ollama-models", async () => {
+  try {
+    const res = await fetch("http://localhost:11434/api/tags");
+    if (!res.ok) return { synced: false, models: [] };
+    const data = (await res.json()) as {
+      models?: { name: string; size: number }[];
+    };
+    const ollamaModels = (data.models ?? []).map((m) => m.name);
+
+    // Update the opencode config to match actual Ollama models
+    const config = readOpencodeConfig();
+    const providers = (config.provider ?? {}) as Record<
+      string,
+      Record<string, unknown>
+    >;
+    const ollama = providers.ollama;
+    if (ollama) {
+      const models: Record<string, { name: string }> = {};
+      for (const name of ollamaModels) {
+        models[name] = { name };
+      }
+      ollama.models = models;
+      writeProviderConfig(providers);
+      log.info(`Synced ${ollamaModels.length} Ollama models to config`);
+    }
+    return { synced: true, models: ollamaModels };
+  } catch {
+    return { synced: false, models: [] };
+  }
+});
+
 // Skills management
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";

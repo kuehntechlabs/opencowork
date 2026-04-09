@@ -18,10 +18,9 @@
   <a href="#license">License</a>
 </p>
 
-<!-- TODO: Add hero screenshot here -->
-<!-- <p align="center">
-  <img src="docs/screenshots/hero.png" alt="OpenCowork Screenshot" width="800" />
-</p> -->
+<p align="center">
+  <img src="docs/screenshots/welcome_screen.png" alt="OpenCowork Welcome Screen" width="800" />
+</p>
 
 ---
 
@@ -100,7 +99,7 @@ npm install -g opencode-ai@latest
 ### Setup
 
 ```bash
-git clone https://github.com/your-org/opencowork.git
+git clone https://github.com/kuehntechlabs/opencowork.git
 cd opencowork
 npm install
 ```
