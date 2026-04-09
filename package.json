@@ -6,13 +6,13 @@
   "main": "./out/main/index.js",
   "scripts": {
     "ensure-opencode": "which opencode > /dev/null 2>&1 || npm install -g opencode-ai@latest",
+    "bundle-opencode": "node scripts/bundle-opencode.mjs",
     "predev": "npm run ensure-opencode",
     "dev": "electron-vite dev",
-    "prebuild": "npm run ensure-opencode",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "package:mac": "electron-builder --mac --config electron-builder.config.ts",
-    "package:win": "electron-builder --win --config electron-builder.config.ts",
+    "package:mac": "npm run bundle-opencode && npm run build && electron-builder --mac --config electron-builder.config.ts",
+    "package:win": "npm run bundle-opencode && npm run build && electron-builder --win --config electron-builder.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

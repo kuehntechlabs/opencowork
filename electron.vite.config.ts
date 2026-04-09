@@ -28,9 +28,7 @@ export default defineConfig({
     root: "src/renderer",
     build: {
       rollupOptions: {
-        input: {
-          main: "src/renderer/index.html",
-        },
+        input: "src/renderer/index.html",
       },
     },
     css: {

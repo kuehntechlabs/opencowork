@@ -8,7 +8,14 @@ const config: Configuration = {
     output: "dist",
     buildResources: "resources",
   },
-  files: ["out/**/*", "resources/**/*"],
+  files: ["out/**/*", "resources/**/*", "!resources/bin"],
+  extraResources: [
+    {
+      from: "resources/bin",
+      to: "bin",
+      filter: ["**/*"],
+    },
+  ],
   mac: {
     category: "public.app-category.developer-tools",
     icon: "resources/icons/icon.icns",

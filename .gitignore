@@ -1,5 +1,7 @@
 node_modules/
 out/
 dist/
+resources/bin/
+.opencode-tmp/
 *.log
 .DS_Store

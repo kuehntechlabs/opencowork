@@ -1,10 +1,44 @@
-import { spawn, execFileSync, type ChildProcess } from "node:child_process";
+import {
+  spawn,
+  execSync,
+  execFileSync,
+  type ChildProcess,
+} from "node:child_process";
 import { createServer } from "node:net";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { app } from "electron";
 import log from "electron-log";
 import treeKill from "tree-kill";
+
+/** Get a full PATH that includes common binary locations (packaged apps have a minimal PATH) */
+function getShellPath(): string {
+  const base = process.env.PATH || "";
+  try {
+    // Grab the user's real shell PATH
+    const shellPath = execSync(
+      "zsh -ilc 'echo $PATH' 2>/dev/null || bash -ilc 'echo $PATH' 2>/dev/null",
+      {
+        encoding: "utf-8",
+        timeout: 5000,
+      },
+    ).trim();
+    if (shellPath) return shellPath;
+  } catch {
+    // Fallback: add common locations manually
+  }
+  const home = homedir();
+  const extras = [
+    "/usr/local/bin",
+    "/opt/homebrew/bin",
+    `${home}/.nvm/versions/node/*/bin`,
+    `${home}/.npm-global/bin`,
+    "/usr/bin",
+    "/bin",
+  ];
+  return [...new Set([...base.split(":"), ...extras])].join(":");
+}
 
 export interface SidecarInfo {
   url: string;
@@ -100,11 +134,29 @@ export async function startSidecar(port = 4096): Promise<SidecarInfo> {
   const actualPort = await findFreePort(port);
   const args = ["serve", `--hostname=127.0.0.1`, `--port=${actualPort}`];
 
-  log.info(`Starting opencode sidecar on port ${actualPort}...`);
+  const fullPath = getShellPath();
 
-  const proc = spawn("opencode", args, {
+  // Prefer system-installed opencode, fall back to bundled binary
+  let opencodeBin = "opencode";
+  try {
+    execSync("which opencode", { env: { PATH: fullPath }, stdio: "pipe" });
+  } catch {
+    const bundledBin = join(
+      process.resourcesPath || app.getAppPath(),
+      "bin",
+      process.platform === "win32" ? "opencode.exe" : "opencode",
+    );
+    if (existsSync(bundledBin)) opencodeBin = bundledBin;
+  }
+
+  log.info(
+    `Starting opencode sidecar on port ${actualPort} (binary: ${opencodeBin})...`,
+  );
+
+  const proc = spawn(opencodeBin, args, {
     env: {
       ...process.env,
+      PATH: fullPath,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

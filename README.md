@@ -140,23 +140,23 @@ OpenCowork follows a standard Electron multi-process architecture:
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                  Main Process                    │
+│                  Main Process                   │
 │  Window management, IPC, sidecar control        │
-│                                                  │
+│                                                 │
 │  ┌─────────────┐  ┌──────────────────────────┐  │
 │  │  Sidecar    │  │  MCP Introspection       │  │
 │  │  (OpenCode) │  │  (stdio / HTTP clients)  │  │
 │  └──────┬──────┘  └──────────────────────────┘  │
-│         │ HTTP + SSE                             │
+│         │ HTTP + SSE                            │
 ├─────────┼───────────────────────────────────────┤
-│         │        Preload (Context Bridge)        │
+│         │        Preload (Context Bridge)       │
 ├─────────┼───────────────────────────────────────┤
-│         ▼        Renderer Process                │
-│  ┌────────────────────────────────────────────┐  │
-│  │  React 19 + Zustand + Tailwind CSS 4      │  │
-│  │                                            │  │
-│  │  Chat ─── Artifacts ─── MCP ─── Projects  │  │
-│  └────────────────────────────────────────────┘  │
+│         ▼        Renderer Process               │
+│  ┌────────────────────────────────────────────┐ │
+│  │  React 19 + Zustand + Tailwind CSS 4       │ │
+│  │                                            │ │
+│  │  Chat ─── Artifacts ─── MCP ─── Projects   │ │
+│  └────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────┘
 ```
 
