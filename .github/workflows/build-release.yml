@@ -22,7 +22,7 @@ jobs:
             platform: darwin
             arch: arm64
             build_cmd: npm run package:mac
-          - os: macos-13
+          - os: macos-15
             platform: darwin
             arch: x64
             build_cmd: npm run package:mac
