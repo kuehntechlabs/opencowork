@@ -78,9 +78,9 @@ export function ProviderSettings({ onClose }: Props) {
     return () => document.removeEventListener("keydown", handler);
   }, [showConnect, connectingProvider]);
 
-  const refresh = () => {
+  const refresh = (showSpinner = false) => {
     if (!connected) return;
-    setLoading(true);
+    if (showSpinner) setLoading(true);
     Promise.all([
       listProviders(),
       fetch(`${getBaseUrl()}/provider/auth`).then((r) => r.json()),
@@ -95,7 +95,7 @@ export function ProviderSettings({ onClose }: Props) {
   };
 
   useEffect(() => {
-    refresh();
+    refresh(true);
   }, [connected]);
 
   // All providers that aren't connected yet, sorted popular first
