@@ -30,8 +30,7 @@
 
 Real-time conversational UI for interacting with AI coding agents. Messages stream in via Server-Sent Events with full Markdown rendering, syntax-highlighted code blocks, and tool call visualization.
 
-<!-- TODO: Add screenshot of chat interface -->
-<!-- ![Chat Interface](docs/screenshots/chat.png) -->
+![Chat Interface](docs/screenshots/chat.gif)
 
 ### Live Artifacts
 
@@ -47,19 +46,19 @@ The AI can generate interactive artifacts that render in a resizable panel along
 
 Artifacts are auto-detected from streaming responses. A fallback detector also catches code blocks and localhost URLs from tool output.
 
-<!-- TODO: Add screenshot or GIF of artifact rendering -->
-<!-- ![Artifacts](docs/screenshots/artifacts.png) -->
+![Artifacts](docs/screenshots/artifacts.png)
 
 ### MCP Marketplace
 
 Browse and install [MCP servers](https://modelcontextprotocol.io/) from the official registry. Supports local (stdio) and remote (HTTP/SSE) transports with live introspection of tools, prompts, and resources.
 
-<!-- TODO: Add screenshot of MCP marketplace -->
-<!-- ![MCP Marketplace](docs/screenshots/mcp.png) -->
+![MCP Marketplace](docs/screenshots/mcp.png)
 
 ### Skills & Customization
 
 Discover, install, and manage AI skills. Customize your agent's behavior with custom instructions and skill configurations.
+
+![Skill Marketplace](docs/screenshots/skills.png)
 
 ### Projects
 
