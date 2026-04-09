@@ -8,6 +8,7 @@ import type {
 } from "../api/types";
 import * as api from "../api/client";
 import { useSettingsStore } from "./settings-store";
+import { useArtifactStore } from "./artifact-store";
 
 interface SessionState {
   sessions: Record<string, Session>;
@@ -70,7 +71,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setActiveSession: (id) => {
     set({ activeSessionId: id });
     if (id) {
-      get().loadMessages(id);
+      // Only load messages if not already in store — SSE keeps them up-to-date
+      // Reloading while a session is active would overwrite streaming data
+      if (!(id in get().messages)) {
+        get().loadMessages(id);
+      }
+      // Sync artifact panel to show this session's artifacts
+      useArtifactStore.getState().syncToSession(id);
       // Clear any open right panel page when navigating to a session
       useSettingsStore.getState().setRightPanelPage(null);
     }

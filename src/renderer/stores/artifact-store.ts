@@ -31,6 +31,7 @@ interface ArtifactState {
   setPanelWidth: (width: number) => void;
   setViewMode: (mode: "preview" | "code") => void;
   clearSessionArtifacts: (sessionId: string) => void;
+  syncToSession: (sessionId: string) => void;
   updateArtifactContent: (id: string, content: string) => void;
   setArtifactLoading: (id: string, loading: boolean) => void;
 }
@@ -102,6 +103,20 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
           : s.activeArtifactId,
         panelOpen: activeGone ? false : s.panelOpen,
       };
+    }),
+
+  syncToSession: (sessionId) =>
+    set((s) => {
+      // Find the most recent artifact belonging to this session
+      const sessionArtifacts = Object.values(s.artifacts)
+        .filter((a) => a.sessionId === sessionId)
+        .sort((a, b) => b.createdAt - a.createdAt);
+
+      if (sessionArtifacts.length > 0) {
+        return { activeArtifactId: sessionArtifacts[0].id };
+      }
+      // No artifacts for this session — close the panel
+      return { activeArtifactId: null, panelOpen: false };
     }),
 
   updateArtifactContent: (id, content) =>

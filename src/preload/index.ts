@@ -137,6 +137,10 @@ const api = {
   removeSkill: (skillName: string): Promise<{ ok: boolean; output: string }> =>
     ipcRenderer.invoke("remove-skill", skillName),
 
+  // Ollama model sync
+  syncOllamaModels: (): Promise<{ synced: boolean; models: string[] }> =>
+    ipcRenderer.invoke("sync-ollama-models"),
+
   // Proxy fetch (bypass CORS)
   fetchUrl: (
     url: string,

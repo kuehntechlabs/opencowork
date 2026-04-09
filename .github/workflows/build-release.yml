@@ -1,0 +1,70 @@
+name: Build & Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            build_cmd: npm run package:mac
+          - os: macos-13
+            platform: darwin
+            arch: x64
+            build_cmd: npm run package:mac
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            build_cmd: npm run package:win
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build & package
+        env:
+          BUILD_PLATFORM: ${{ matrix.platform }}
+          BUILD_ARCH: ${{ matrix.arch }}
+        run: ${{ matrix.build_cmd }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: artifacts/*

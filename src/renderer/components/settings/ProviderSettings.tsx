@@ -4,6 +4,9 @@ import { listProviders, getBaseUrl } from "../../api/client";
 import type { Provider } from "../../api/types";
 import { useServerStore } from "../../stores/server-store";
 import { Spinner } from "../common/Spinner";
+import { LOCAL_PRESETS } from "../../stores/provider-config-store";
+
+const LOCAL_PROVIDER_IDS = new Set(LOCAL_PRESETS.map((p) => p.id));
 
 interface AuthMethod {
   type: "oauth" | "api";
@@ -75,9 +78,9 @@ export function ProviderSettings({ onClose }: Props) {
     return () => document.removeEventListener("keydown", handler);
   }, [showConnect, connectingProvider]);
 
-  const refresh = () => {
+  const refresh = (showSpinner = false) => {
     if (!connected) return;
-    setLoading(true);
+    if (showSpinner) setLoading(true);
     Promise.all([
       listProviders(),
       fetch(`${getBaseUrl()}/provider/auth`).then((r) => r.json()),
@@ -92,7 +95,7 @@ export function ProviderSettings({ onClose }: Props) {
   };
 
   useEffect(() => {
-    refresh();
+    refresh(true);
   }, [connected]);
 
   // All providers that aren't connected yet, sorted popular first
@@ -126,10 +129,11 @@ export function ProviderSettings({ onClose }: Props) {
     setAuthError(null);
     try {
       if (method.type === "api") {
-        // For API key auth, use PUT /auth/:providerID directly
+        // Local providers (Ollama, LM Studio, etc.) don't need an API key
+        const isLocal = LOCAL_PROVIDER_IDS.has(providerId);
         const keyValue =
           authInputs["key"] || authInputs["apiKey"] || authInputs["api_key"];
-        if (!keyValue) {
+        if (!keyValue && !isLocal) {
           setAuthError("API key is required");
           setSaving(false);
           return;
@@ -137,7 +141,7 @@ export function ProviderSettings({ onClose }: Props) {
         const res = await fetch(`${getBaseUrl()}/auth/${providerId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "api", key: keyValue }),
+          body: JSON.stringify({ type: "api", key: keyValue || "" }),
         });
         if (!res.ok) {
           const text = await res.text();
@@ -251,6 +255,15 @@ export function ProviderSettings({ onClose }: Props) {
           <div className="flex flex-col gap-1.5">
             {connectedIds.map((id) => {
               const provider = providers.find((p) => p.id === id);
+              if (id === "ollama") {
+                return (
+                  <OllamaConnectedCard
+                    key={id}
+                    onDisconnect={() => handleDisconnect(id)}
+                    onSync={refresh}
+                  />
+                );
+              }
               const modelCount = provider
                 ? Object.keys(provider.models ?? {}).length
                 : 0;
@@ -437,8 +450,11 @@ function ConnectForm({
   const method = methods[selectedMethod];
   if (!method) return null;
 
+  const isLocal = LOCAL_PROVIDER_IDS.has(providerId);
   const isApiKeyOnly =
-    method.type === "api" && (!method.prompts || method.prompts.length === 0);
+    method.type === "api" &&
+    (!method.prompts || method.prompts.length === 0) &&
+    !isLocal;
 
   // Filter prompts by `when` conditions
   const visiblePrompts = (method.prompts ?? []).filter((prompt) => {
@@ -505,6 +521,12 @@ function ConnectForm({
         </div>
       )}
 
+      {/* Local provider status */}
+      {isLocal && providerId === "ollama" && <OllamaStatus />}
+      {isLocal && providerId !== "ollama" && (
+        <LocalServerStatus providerId={providerId} />
+      )}
+
       {/* Prompts */}
       {visiblePrompts.map((prompt) => (
         <div key={prompt.key} className="mb-3">
@@ -566,6 +588,293 @@ function ConnectForm({
         {saving && <Spinner size={14} />}
         {saving ? "Connecting..." : "Connect"}
       </button>
+    </div>
+  );
+}
+
+interface OllamaModel {
+  name: string;
+  size: number;
+  modified_at: string;
+}
+
+interface OllamaRunningModel {
+  name: string;
+  size: number;
+  expires_at: string;
+}
+
+function formatSize(bytes: number): string {
+  const gb = bytes / 1e9;
+  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / 1e6).toFixed(0)} MB`;
+}
+
+function OllamaStatus() {
+  const [status, setStatus] = useState<"checking" | "running" | "not-running">(
+    "checking",
+  );
+  const [downloaded, setDownloaded] = useState<OllamaModel[]>([]);
+  const [running, setRunning] = useState<OllamaRunningModel[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const check = async () => {
+      try {
+        const res = await fetch("http://localhost:11434/", {
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          setStatus("not-running");
+          return;
+        }
+        setStatus("running");
+
+        const [tagsRes, psRes] = await Promise.all([
+          fetch("http://localhost:11434/api/tags", {
+            signal: controller.signal,
+          }),
+          fetch("http://localhost:11434/api/ps", {
+            signal: controller.signal,
+          }),
+        ]);
+
+        if (tagsRes.ok) {
+          const data = await tagsRes.json();
+          setDownloaded(data.models ?? []);
+        }
+        if (psRes.ok) {
+          const data = await psRes.json();
+          setRunning(data.models ?? []);
+        }
+      } catch {
+        setStatus("not-running");
+      }
+    };
+    check();
+    return () => controller.abort();
+  }, []);
+
+  const runningNames = new Set(running.map((m) => m.name));
+
+  if (status === "checking") {
+    return (
+      <div className="mb-3 flex items-center gap-2 text-xs text-text-tertiary">
+        <Spinner size={12} />
+        Checking Ollama...
+      </div>
+    );
+  }
+
+  if (status === "not-running") {
+    return (
+      <div className="mb-3 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2">
+        <p className="text-xs font-medium text-red-400">
+          Ollama is not running
+        </p>
+        <p className="mt-1 text-xs text-text-tertiary">
+          Start it with{" "}
+          <code className="rounded bg-surface-tertiary px-1 py-0.5">
+            ollama serve
+          </code>
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-3">
+      <div className="mb-2 flex items-center gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+        <span className="text-xs text-green-400">Ollama is running</span>
+      </div>
+
+      {downloaded.length === 0 ? (
+        <div className="rounded-md border border-border bg-surface px-3 py-2">
+          <p className="text-xs text-text-tertiary">No models downloaded</p>
+          <p className="mt-1 text-xs text-text-tertiary">
+            Pull one with{" "}
+            <code className="rounded bg-surface-tertiary px-1 py-0.5">
+              ollama pull llama3.1
+            </code>
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-md border border-border bg-surface">
+          <div className="border-b border-border/30 px-3 py-1.5">
+            <span className="text-xs font-medium text-text-secondary">
+              {downloaded.length} model{downloaded.length !== 1 ? "s" : ""}{" "}
+              downloaded
+            </span>
+          </div>
+          <div className="max-h-32 overflow-y-auto">
+            {downloaded.map((m) => (
+              <div
+                key={m.name}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs"
+              >
+                {runningNames.has(m.name) ? (
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                ) : (
+                  <span className="h-1.5 w-1.5 rounded-full bg-text-tertiary/30" />
+                )}
+                <span className="flex-1 truncate text-text">{m.name}</span>
+                <span className="text-text-tertiary">{formatSize(m.size)}</span>
+                {runningNames.has(m.name) && (
+                  <span className="text-green-400">active</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LocalServerStatus({ providerId }: { providerId: string }) {
+  const preset = LOCAL_PRESETS.find((p) => p.id === providerId);
+  const baseURL = preset?.baseURL ?? "";
+  const [status, setStatus] = useState<"checking" | "running" | "not-running">(
+    "checking",
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    // Check by hitting the base URL (strip /v1 for a plain health check)
+    const healthUrl = baseURL.replace(/\/v1\/?$/, "");
+    fetch(healthUrl, { signal: controller.signal })
+      .then((r) => setStatus(r.ok ? "running" : "not-running"))
+      .catch(() => setStatus("not-running"));
+    return () => controller.abort();
+  }, [baseURL]);
+
+  if (status === "checking") {
+    return (
+      <div className="mb-3 flex items-center gap-2 text-xs text-text-tertiary">
+        <Spinner size={12} />
+        Checking {preset?.name ?? providerId}...
+      </div>
+    );
+  }
+
+  if (status === "not-running") {
+    return (
+      <div className="mb-3 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2">
+        <p className="text-xs font-medium text-red-400">
+          {preset?.name ?? providerId} is not running
+        </p>
+        <p className="mt-1 text-xs text-text-tertiary">
+          Expected at{" "}
+          <code className="rounded bg-surface-tertiary px-1 py-0.5">
+            {baseURL}
+          </code>
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-3 flex items-center gap-1.5">
+      <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+      <span className="text-xs text-green-400">
+        {preset?.name ?? providerId} is running
+      </span>
+    </div>
+  );
+}
+
+function OllamaConnectedCard({
+  onDisconnect,
+  onSync,
+}: {
+  onDisconnect: () => void;
+  onSync: () => void;
+}) {
+  const [models, setModels] = useState<string[] | null>(null);
+  const [syncing, setSyncing] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    window.api
+      .syncOllamaModels()
+      .then((result) => {
+        if (result.synced) {
+          setModels(result.models);
+          onSync();
+        } else {
+          setModels(null);
+        }
+      })
+      .catch(() => setModels(null))
+      .finally(() => setSyncing(false));
+  }, []);
+
+  return (
+    <div className="rounded-lg border border-border bg-surface-secondary">
+      <div className="flex items-center justify-between px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-text">Ollama</span>
+          {syncing ? (
+            <span className="flex items-center gap-1 text-xs text-text-tertiary">
+              <Spinner size={10} /> syncing...
+            </span>
+          ) : models !== null ? (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-xs text-text-tertiary hover:text-text"
+            >
+              {models.length} model{models.length !== 1 ? "s" : ""}
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className={`ml-1 inline transition-transform ${expanded ? "rotate-180" : ""}`}
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+          ) : (
+            <span className="text-xs text-red-400">not running</span>
+          )}
+        </div>
+        <button
+          onClick={onDisconnect}
+          className="rounded-md px-2.5 py-1 text-xs text-red-400 transition-colors hover:bg-red-500/10"
+        >
+          Disconnect
+        </button>
+      </div>
+
+      {expanded && models !== null && (
+        <div className="border-t border-border/30">
+          {models.length === 0 ? (
+            <div className="px-3 py-2">
+              <p className="text-xs text-text-tertiary">No models downloaded</p>
+              <p className="mt-1 text-xs text-text-tertiary">
+                Pull one with{" "}
+                <code className="rounded bg-surface-tertiary px-1 py-0.5">
+                  ollama pull llama3.1
+                </code>
+              </p>
+            </div>
+          ) : (
+            <div className="max-h-40 overflow-y-auto">
+              {models.map((name) => (
+                <div
+                  key={name}
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                  <span className="flex-1 truncate text-text">{name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
