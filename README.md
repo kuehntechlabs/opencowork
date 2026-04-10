@@ -81,6 +81,11 @@ Download the latest release for your platform:
 | **macOS** (Apple Silicon) | [OpenCowork-macOS.dmg](https://github.com/kuehntechlabs/opencowork/releases/latest/download/OpenCowork-macOS.dmg) |
 | **Windows** | [OpenCowork-Windows-Setup.exe](https://github.com/kuehntechlabs/opencowork/releases/latest/download/OpenCowork-Windows-Setup.exe) |
 
+> **macOS users:** The app is not yet notarized with Apple. On first launch, macOS will show a security warning. To open it, right-click the app and select **Open**, then confirm in the dialog. Alternatively, run:
+> ```bash
+> xattr -cr /Applications/OpenCowork.app
+> ```
+
 ### Prerequisites
 
 OpenCowork requires the [OpenCode](https://github.com/nicholasgriffintn/opencode) CLI to be installed:
