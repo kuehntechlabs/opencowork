@@ -22,10 +22,6 @@ jobs:
             platform: darwin
             arch: arm64
             build_cmd: npm run package:mac
-          - os: macos-15
-            platform: darwin
-            arch: x64
-            build_cmd: npm run package:mac
           - os: windows-latest
             platform: win32
             arch: x64
@@ -70,6 +66,14 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: Rename artifacts for release
+        run: |
+          cd artifacts
+          for f in *.dmg; do [ -f "$f" ] && mv "$f" "OpenCowork-macOS.dmg"; done
+          for f in *.zip; do [ -f "$f" ] && mv "$f" "OpenCowork-macOS.zip"; done
+          for f in *.exe; do [ -f "$f" ] && mv "$f" "OpenCowork-Windows-Setup.exe"; done
+          ls -la
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

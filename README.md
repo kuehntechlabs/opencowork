@@ -74,12 +74,12 @@ Connect your own API keys for Anthropic, OpenAI, Google, Groq, xAI, Mistral, or 
 
 ### Download
 
-<!-- TODO: Add download links for latest release -->
-<!-- Download the latest release for your platform:
-- **macOS** — [OpenCowork.dmg](https://github.com/your-org/opencowork/releases/latest)
-- **Windows** — [OpenCowork-Setup.exe](https://github.com/your-org/opencowork/releases/latest) -->
+Download the latest release for your platform:
 
-Builds are available for macOS and Windows. Check the [Releases](../../releases) page.
+| Platform | Download |
+|----------|----------|
+| **macOS** (Apple Silicon) | [OpenCowork-macOS.dmg](https://github.com/kuehntechlabs/opencowork/releases/latest/download/OpenCowork-macOS.dmg) |
+| **Windows** | [OpenCowork-Windows-Setup.exe](https://github.com/kuehntechlabs/opencowork/releases/latest/download/OpenCowork-Windows-Setup.exe) |
 
 ### Prerequisites
 
@@ -120,7 +120,7 @@ npm run build
 ### Package
 
 ```bash
-npm run package:mac   # macOS (DMG + ZIP)
+npm run package:mac   # macOS Apple Silicon (DMG + ZIP)
 npm run package:win   # Windows (NSIS installer)
 ```
 
