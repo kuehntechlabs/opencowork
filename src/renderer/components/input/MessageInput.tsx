@@ -16,6 +16,8 @@ interface Props {
   disabled?: boolean;
   placeholder?: string;
   showComposerBar?: boolean;
+  isBusy?: boolean;
+  onAbort?: () => void;
 }
 
 export function MessageInput({
@@ -23,6 +25,8 @@ export function MessageInput({
   disabled,
   placeholder,
   showComposerBar = true,
+  isBusy,
+  onAbort,
 }: Props) {
   const [text, setText] = useState("");
   const [slashActive, setSlashActive] = useState<string | null>(null);
@@ -155,8 +159,7 @@ export function MessageInput({
         const idx = filteredCommands.findIndex(
           (c) => c.id === effectiveActiveId,
         );
-        const next =
-          filteredCommands[(idx + 1) % filteredCommands.length];
+        const next = filteredCommands[(idx + 1) % filteredCommands.length];
         setSlashActive(next.id);
         return;
       }
@@ -174,9 +177,7 @@ export function MessageInput({
       }
       if (e.key === "Tab") {
         e.preventDefault();
-        const cmd = filteredCommands.find(
-          (c) => c.id === effectiveActiveId,
-        );
+        const cmd = filteredCommands.find((c) => c.id === effectiveActiveId);
         if (cmd) {
           setText("/" + cmd.trigger);
         }
@@ -233,22 +234,39 @@ export function MessageInput({
         />
         <div className="flex items-center gap-1">
           <VoiceButton onTranscript={handleVoiceTranscript} />
-          <button
-            onClick={handleSend}
-            disabled={disabled || !text.trim()}
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-text transition-colors hover:bg-accent-hover disabled:opacity-30"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
+          {isBusy ? (
+            <button
+              onClick={onAbort}
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 text-red-500 transition-colors hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+              title="Stop generating"
             >
-              <path d="M22 2 11 13M22 2l-7 20-4-9-9-4z" />
-            </svg>
-          </button>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={disabled || !text.trim()}
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-text transition-colors hover:bg-accent-hover disabled:opacity-30"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M22 2 11 13M22 2l-7 20-4-9-9-4z" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
