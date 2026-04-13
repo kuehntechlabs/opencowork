@@ -1,4 +1,5 @@
 import { Sidebar } from "./Sidebar";
+import { CollapsedSidebar } from "./CollapsedSidebar";
 import { RightPanel } from "./RightPanel";
 import { useSettingsStore } from "../../stores/settings-store";
 import { ProviderSettingsModal } from "../settings/ProviderSettingsModal";
@@ -23,9 +24,14 @@ export function AppLayout() {
   } = useDirectoryInstall();
 
   return (
-    <div className="relative flex h-full">
-      {sidebarOpen && <Sidebar />}
-      <RightPanel />
+    <div className="relative flex h-full flex-col">
+      {/* Full-width drag region / title bar for macOS */}
+      <div className="drag-region h-12 w-full shrink-0 border-b border-border bg-surface-secondary" />
+
+      <div className="relative flex flex-1 overflow-hidden">
+        {sidebarOpen ? <Sidebar /> : <CollapsedSidebar />}
+        <RightPanel />
+      </div>
       <ProviderSettingsModal />
       <NewProjectModal />
 

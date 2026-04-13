@@ -1,6 +1,5 @@
 import { useArtifactStore } from "../../stores/artifact-store";
 import { ArtifactPanelHeader } from "./ArtifactPanelHeader";
-import { ArtifactResizeHandle } from "./ArtifactResizeHandle";
 import { HtmlArtifactRenderer } from "./HtmlArtifactRenderer";
 import { ReactArtifactRenderer } from "./ReactArtifactRenderer";
 import { BrowserPreview } from "./BrowserPreview";
@@ -63,8 +62,7 @@ export function ArtifactPanel() {
   };
 
   return (
-    <div className="relative flex h-full flex-1 flex-col border-l border-border bg-surface">
-      <ArtifactResizeHandle />
+    <div className="relative flex h-full flex-1 flex-col bg-surface">
       <ArtifactPanelHeader />
       <div className="flex-1 overflow-hidden">{renderContent()}</div>
     </div>

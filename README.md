@@ -26,15 +26,19 @@
 
 ## Features
 
+### Sidebar & Navigation
+
+Collapsible sidebar with quick-access icons for creating new chats, browsing projects, and customizing your agent. When collapsed, a slim icon strip keeps navigation accessible. A full-width title bar ensures clean integration with macOS window controls.
+
 ### Chat Interface
 
-Real-time conversational UI for interacting with AI coding agents. Messages stream in via Server-Sent Events with full Markdown rendering, syntax-highlighted code blocks, and tool call visualization.
+Real-time conversational UI for interacting with AI coding agents. Messages stream in via Server-Sent Events with full Markdown rendering, syntax-highlighted code blocks, and tool call visualization. The send button doubles as an inline stop control during generation.
 
 ![Chat Interface](docs/screenshots/chat.gif)
 
 ### Live Artifacts
 
-The AI can generate interactive artifacts that render in a resizable panel alongside the chat:
+The AI can generate interactive artifacts that render in a draggable split view alongside the chat. Drag the divider left or right to resize either panel. The sidebar auto-collapses when the viewport is too narrow to fit both panels.
 
 | Type | Description |
 |------|-------------|

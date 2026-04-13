@@ -77,26 +77,10 @@ export function ChatView({ sessionId }: Props) {
 
       {/* Input */}
       <div className="border-t border-border p-4">
-        {isBusy && (
-          <div className="mb-2 flex justify-center">
-            <button
-              onClick={handleAbort}
-              className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-secondary px-3 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <rect x="6" y="6" width="12" height="12" rx="2" />
-              </svg>
-              Stop
-            </button>
-          </div>
-        )}
         <MessageInput
           onSend={handleSend}
+          isBusy={isBusy}
+          onAbort={handleAbort}
           placeholder={isBusy ? "Send to interrupt..." : "Send a message..."}
         />
       </div>

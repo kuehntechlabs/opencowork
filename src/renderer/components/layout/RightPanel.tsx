@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useArtifactStore } from "../../stores/artifact-store";
@@ -12,28 +12,74 @@ import { useDirectoryInstall } from "../../hooks/useDirectoryInstall";
 // Preload skills cache so directory opens fast
 import "../../data/marketplace-fetch";
 
-const SIDEBAR_WIDTH = 280;
-const MIN_PANEL_WIDTH = 400; // minimum width for each panel in split view
+const SIDEBAR_OPEN_WIDTH = 280;
+const SIDEBAR_COLLAPSED_WIDTH = 48;
+const MIN_PANEL_WIDTH = 250; // minimum width for each panel in split view
+const MIN_SPLIT_PERCENT = 20; // minimum % for either side
+const MAX_SPLIT_PERCENT = 80;
 
 export function RightPanel() {
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
   const sidebarOpen = useSettingsStore((s) => s.sidebarOpen);
   const setSidebarOpen = useSettingsStore((s) => s.setSidebarOpen);
-  const toggleSidebar = useSettingsStore((s) => s.toggleSidebar);
   const rightPanelPage = useSettingsStore((s) => s.rightPanelPage);
   const setRightPanelPage = useSettingsStore((s) => s.setRightPanelPage);
   const directoryCategory = useSettingsStore((s) => s.directoryCategory);
   const artifactPanelOpen = useArtifactStore((s) => s.panelOpen);
   const activeArtifactId = useArtifactStore((s) => s.activeArtifactId);
   const sidebarWasOpen = useRef(sidebarOpen);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const [splitPercent, setSplitPercent] = useState(50);
+  const [isDragging, setIsDragging] = useState(false);
 
   const { installedNames, handleInstall } = useDirectoryInstall();
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  // Global mousemove/mouseup while dragging — attached to document so
+  // iframes can't swallow events (the overlay blocks pointer events on them).
+  useEffect(() => {
+    if (!isDragging) return;
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMove = (ev: MouseEvent) => {
+      if (!splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100;
+      setSplitPercent(
+        Math.min(MAX_SPLIT_PERCENT, Math.max(MIN_SPLIT_PERCENT, pct)),
+      );
+    };
+
+    const onUp = () => {
+      setIsDragging(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [isDragging]);
 
   // Auto-collapse sidebar when artifact panel opens if viewport is too narrow
   useEffect(() => {
     const showingArtifact = artifactPanelOpen && activeArtifactId;
     if (showingArtifact && sidebarOpen) {
-      const available = window.innerWidth - SIDEBAR_WIDTH;
+      const sidebarW = sidebarOpen
+        ? SIDEBAR_OPEN_WIDTH
+        : SIDEBAR_COLLAPSED_WIDTH;
+      const available = window.innerWidth - sidebarW;
       if (available < MIN_PANEL_WIDTH * 2) {
         sidebarWasOpen.current = true;
         setSidebarOpen(false);
@@ -86,11 +132,33 @@ export function RightPanel() {
     if (activeSessionId) {
       if (artifactPanelOpen && activeArtifactId) {
         return (
-          <div className="flex flex-1 overflow-hidden">
-            <div className="flex flex-1 flex-col overflow-hidden">
+          <div
+            ref={splitContainerRef}
+            className="relative flex h-full w-full overflow-hidden"
+          >
+            {/* Transparent overlay while dragging — prevents iframes from stealing events */}
+            {isDragging && (
+              <div className="absolute inset-0 z-20 cursor-col-resize" />
+            )}
+            <div
+              className="flex min-w-0 flex-col overflow-hidden"
+              style={{ width: `${splitPercent}%` }}
+            >
               <ChatView sessionId={activeSessionId} />
             </div>
-            <ArtifactPanel />
+            {/* Drag handle */}
+            <div
+              onMouseDown={handleDragStart}
+              className="group relative z-10 flex w-1 shrink-0 cursor-col-resize items-center justify-center hover:bg-accent/20"
+            >
+              <div className="h-8 w-0.5 rounded-full bg-border transition-colors group-hover:bg-accent" />
+            </div>
+            <div
+              className="flex min-w-0 flex-col overflow-hidden"
+              style={{ width: `${100 - splitPercent}%` }}
+            >
+              <ArtifactPanel />
+            </div>
           </div>
         );
       }
@@ -99,38 +167,9 @@ export function RightPanel() {
     return <HomeView />;
   };
 
-  const isFullHeight = rightPanelPage === "customize";
-
   return (
-    <main className="relative flex h-full flex-1 flex-col bg-surface">
-      {/* Drag region for macOS — hidden when page needs full height */}
-      {!isFullHeight && (
-        <div className="drag-region flex h-12 w-full shrink-0 items-center px-4" />
-      )}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {renderContent()}
-      </div>
-
-      {/* Sidebar re-open button at bottom-left */}
-      {!sidebarOpen && (
-        <button
-          onClick={toggleSidebar}
-          className="no-drag absolute bottom-3 left-3 rounded-md border border-border bg-surface-secondary p-1.5 text-text-tertiary shadow-sm transition-colors hover:bg-surface-hover hover:text-text"
-          title="Show sidebar"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <path d="M9 3v18" />
-          </svg>
-        </button>
-      )}
+    <main className="relative flex h-full flex-1 flex-col overflow-hidden bg-surface">
+      <div className="flex flex-1 overflow-hidden">{renderContent()}</div>
     </main>
   );
 }
