@@ -38,7 +38,7 @@ Real-time conversational UI for interacting with AI coding agents. Messages stre
 
 ### Live Artifacts
 
-The AI can generate interactive artifacts that render in a resizable panel alongside the chat:
+The AI can generate interactive artifacts that render in a draggable split view alongside the chat. Drag the divider left or right to resize either panel. The sidebar auto-collapses when the viewport is too narrow to fit both panels.
 
 | Type | Description |
 |------|-------------|
