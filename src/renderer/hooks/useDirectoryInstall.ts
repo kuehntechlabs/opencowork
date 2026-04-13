@@ -19,7 +19,7 @@ export interface ConfigPrompt {
 }
 
 /** Restart the sidecar and reconnect the renderer to the new URL */
-async function restartAndReconnect(): Promise<void> {
+export async function restartAndReconnect(): Promise<void> {
   const newUrl = await api.restartSidecar();
   if (newUrl) {
     setBaseUrl(newUrl);
@@ -30,12 +30,18 @@ async function restartAndReconnect(): Promise<void> {
     for (let i = 0; i < 15; i++) {
       if (await checkHealth()) {
         serverStore.setConnected(true);
+        serverStore.setNeedsRestart(false);
         connectSSE();
         return;
       }
       await new Promise((r) => setTimeout(r, 500));
     }
   }
+}
+
+/** Mark that a restart is needed without actually restarting */
+function flagRestartNeeded(): void {
+  useServerStore.getState().setNeedsRestart(true);
 }
 
 export function useDirectoryInstall() {
@@ -122,8 +128,7 @@ export function useDirectoryInstall() {
 
             setInstalling((prev) => new Set([...prev, item.name]));
             await api.writeMCPConfig({ [configName]: config });
-            // Restart sidecar so opencode picks up the new MCP server
-            await restartAndReconnect();
+            flagRestartNeeded();
             setInstalling((prev) => {
               const next = new Set(prev);
               next.delete(item.name);
@@ -157,7 +162,7 @@ export function useDirectoryInstall() {
 
             setInstalling((prev) => new Set([...prev, item.name]));
             await api.writeMCPConfig({ [configName]: config });
-            await restartAndReconnect();
+            flagRestartNeeded();
             setInstalling((prev) => {
               const next = new Set(prev);
               next.delete(item.name);
@@ -199,6 +204,7 @@ export function useDirectoryInstall() {
           });
 
           if (result.ok) {
+            flagRestartNeeded();
             await refreshInstalled();
           } else {
             console.error("Skill install failed:", result.output);
@@ -226,7 +232,7 @@ export function useDirectoryInstall() {
           // Remove MCP server from config
           const configName = itemName.toLowerCase().replace(/[^a-z0-9-]/g, "-");
           await api.removeMCPConfig(configName);
-          await restartAndReconnect();
+          flagRestartNeeded();
           setInstalling((prev) => {
             const next = new Set(prev);
             next.delete(itemName);
@@ -246,6 +252,7 @@ export function useDirectoryInstall() {
         });
 
         if (result.ok) {
+          flagRestartNeeded();
           await refreshInstalled();
         } else {
           console.error("Skill remove failed:", result.output);

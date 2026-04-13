@@ -172,7 +172,7 @@ export function DirectoryPage({
     let list: CatalogItem[];
 
     if (category === "connectors") {
-      list = connectors.length > 0 ? connectors : CONNECTORS;
+      list = connectors;
     } else if (category === "skills" && searchResults) {
       list = searchResults;
     } else if (category === "skills") {

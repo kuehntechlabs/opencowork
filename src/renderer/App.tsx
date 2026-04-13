@@ -42,6 +42,8 @@ export function App() {
             if (healthy) {
               setConnected(true);
               connectSSE();
+              // Pre-load MCP servers in background so Connectors page opens instantly
+              window.api.listMCPServers().catch(() => {});
               break;
             }
             retries++;

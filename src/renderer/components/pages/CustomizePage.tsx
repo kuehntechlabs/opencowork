@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSettingsStore } from "../../stores/settings-store";
+import { useServerStore } from "../../stores/server-store";
 import { listSkills, type SkillInfo } from "../../api/client";
+import { restartAndReconnect } from "../../hooks/useDirectoryInstall";
 import { SkillDetailView } from "./SkillDetailView";
 import { FilePreviewView } from "./FilePreviewView";
 
@@ -214,18 +216,16 @@ export function CustomizePage() {
 
   const handleRemoveConnector = useCallback(async (serverName: string) => {
     await api.removeMCPConfig(serverName);
-    await api.restartSidecar().catch(() => {});
+    useServerStore.getState().setNeedsRestart(true);
     setSelectedServer(null);
-    // Refresh the connectors list
-    api
-      .refreshMCPServers()
-      .then(setServers)
-      .catch(() => {});
+    // Remove from local state immediately
+    setMcpServers((prev) => prev.filter((s) => s.name !== serverName));
   }, []);
 
   const handleRemoveSkill = useCallback(async (location: string) => {
     const result = await api.removeSkill(location);
     if (result.ok) {
+      useServerStore.getState().setNeedsRestart(true);
       // Remove from local state immediately (sidecar may cache the old list)
       setSkills((prev) => prev.filter((s) => s.location !== location));
       setSelectedSkill(null);
@@ -234,6 +234,31 @@ export function CustomizePage() {
       console.error("Remove failed:", result.output);
     }
   }, []);
+
+  const needsRestart = useServerStore((s) => s.needsRestart);
+  const [restarting, setRestarting] = useState(false);
+
+  const handleRestart = useCallback(async () => {
+    setRestarting(true);
+    try {
+      await restartAndReconnect();
+      // Refresh MCP servers after restart
+      api
+        .listMCPServers()
+        .then((servers) => {
+          setMcpServers(servers);
+          if (selectedServer) {
+            const updated = servers.find((s) => s.name === selectedServer.name);
+            setSelectedServer(updated || null);
+          }
+        })
+        .catch(() => {});
+    } catch (err) {
+      console.error("Restart failed:", err);
+    } finally {
+      setRestarting(false);
+    }
+  }, [selectedServer]);
 
   const filtered = search.trim()
     ? skills.filter(
@@ -257,168 +282,203 @@ export function CustomizePage() {
     : mcpServers;
 
   return (
-    <div className="flex h-full min-h-0">
-      {/* LEFT PANEL */}
-      <div className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
-        {/* Drag region + back button + title + add */}
-        <div className="drag-region flex h-12 shrink-0 items-center gap-2 px-4">
-          <button
-            onClick={section ? handleBackToMenu : () => setRightPanelPage(null)}
-            className="no-drag rounded-md p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
-            title="Back"
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Restart banner */}
+      {needsRestart && (
+        <div className="flex shrink-0 items-center gap-3 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="shrink-0 text-amber-400"
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M19 12H5" />
-              <polyline points="12 19 5 12 12 5" />
-            </svg>
-          </button>
-          <span className="no-drag text-sm font-semibold text-text">
-            {section === "skills"
-              ? "Skills"
-              : section === "connectors"
-                ? "Connectors"
-                : "Customize"}
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          <span className="flex-1 text-xs text-amber-300">
+            You need to restart opencowork to take effect.
           </span>
-          <div className="flex-1" />
           <button
-            onClick={() =>
-              openDirectory(section === "connectors" ? "connectors" : "skills")
-            }
-            className="no-drag rounded-md p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
-            title="Browse directory"
+            onClick={handleRestart}
+            disabled={restarting}
+            className="shrink-0 rounded-md bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/30 disabled:opacity-50"
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
+            {restarting ? "Restarting..." : "Restart"}
           </button>
         </div>
+      )}
 
-        {/* Left panel content */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {!section && (
-            <div className="px-4 pb-6">
-              <div className="flex flex-col gap-0.5">
-                <MenuButton
-                  icon={
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                    >
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                      <polyline points="14 2 14 8 20 8" />
-                      <line x1="16" y1="13" x2="8" y2="13" />
-                      <line x1="16" y1="17" x2="8" y2="17" />
-                    </svg>
-                  }
-                  label="Skills"
-                  onClick={() => setSection("skills")}
-                />
-                <MenuButton
-                  icon={
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                    >
-                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                    </svg>
-                  }
-                  label="Connectors"
-                  onClick={() => setSection("connectors")}
-                />
+      <div className="flex min-h-0 flex-1">
+        {/* LEFT PANEL */}
+        <div className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
+          {/* Drag region + back button + title + add */}
+          <div className="drag-region flex h-12 shrink-0 items-center gap-2 px-4">
+            <button
+              onClick={
+                section ? handleBackToMenu : () => setRightPanelPage(null)
+              }
+              className="no-drag rounded-md p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
+              title="Back"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M19 12H5" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+            </button>
+            <span className="no-drag text-sm font-semibold text-text">
+              {section === "skills"
+                ? "Skills"
+                : section === "connectors"
+                  ? "Connectors"
+                  : "Customize"}
+            </span>
+            <div className="flex-1" />
+            <button
+              onClick={() =>
+                openDirectory(
+                  section === "connectors" ? "connectors" : "skills",
+                )
+              }
+              className="no-drag rounded-md p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
+              title="Browse directory"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Left panel content */}
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            {!section && (
+              <div className="px-4 pb-6">
+                <div className="flex flex-col gap-0.5">
+                  <MenuButton
+                    icon={
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                      </svg>
+                    }
+                    label="Skills"
+                    onClick={() => setSection("skills")}
+                  />
+                  <MenuButton
+                    icon={
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                      </svg>
+                    }
+                    label="Connectors"
+                    onClick={() => setSection("connectors")}
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {section === "skills" && (
-            <SkillsList
-              skills={userSkills}
-              builtInSkills={nodeModuleSkills}
-              loading={loading}
-              search={search}
-              onSearchChange={setSearch}
-              selectedSkill={selectedSkill}
-              onSelectSkill={handleSelectSkill}
-              onRemoveSkill={handleRemoveSkill}
-              dirContents={dirContents}
-              expandedDirs={expandedDirs}
-              onToggleDir={toggleDir}
-              onOpenFile={handleOpenFile}
-              onAdd={() => openDirectory("skills")}
-            />
-          )}
+            {section === "skills" && (
+              <SkillsList
+                skills={userSkills}
+                builtInSkills={nodeModuleSkills}
+                loading={loading}
+                search={search}
+                onSearchChange={setSearch}
+                selectedSkill={selectedSkill}
+                onSelectSkill={handleSelectSkill}
+                onRemoveSkill={handleRemoveSkill}
+                dirContents={dirContents}
+                expandedDirs={expandedDirs}
+                onToggleDir={toggleDir}
+                onOpenFile={handleOpenFile}
+                onAdd={() => openDirectory("skills")}
+              />
+            )}
 
-          {section === "connectors" && (
-            <ConnectorsList
-              servers={filteredServers}
-              loading={mcpLoading}
-              introspecting={mcpIntrospecting}
-              search={connectorSearch}
-              onSearchChange={setConnectorSearch}
-              selectedServer={selectedServer}
-              onSelectServer={setSelectedServer}
-              onRefresh={handleRefreshMCP}
-              onAdd={() => openDirectory("connectors")}
-            />
-          )}
+            {section === "connectors" && (
+              <ConnectorsList
+                servers={filteredServers}
+                loading={mcpLoading}
+                introspecting={mcpIntrospecting}
+                search={connectorSearch}
+                onSearchChange={setConnectorSearch}
+                selectedServer={selectedServer}
+                onSelectServer={setSelectedServer}
+                onRefresh={handleRefreshMCP}
+                onAdd={() => openDirectory("connectors")}
+              />
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* RIGHT PANEL */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="drag-region h-12 w-full shrink-0" />
-        <div className="flex-1 overflow-y-auto">
-          {selectedFile && selectedSkill ? (
-            <FilePreviewView
-              filePath={selectedFile.path}
-              fileName={selectedFile.name}
-              skillName={selectedSkill.name}
-              onBack={handleBackFromFile}
-            />
-          ) : selectedSkill ? (
-            <SkillDetailView
-              skill={selectedSkill}
-              onBack={handleBackFromSkill}
-              onRemove={() => handleRemoveSkill(selectedSkill.location)}
-            />
-          ) : selectedServer ? (
-            <ConnectorDetailView
-              server={selectedServer}
-              introspecting={mcpIntrospecting}
-              onBack={() => setSelectedServer(null)}
-              onRemove={handleRemoveConnector}
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <p className="text-sm text-text-tertiary">
-                {section
-                  ? "Select an item to view details."
-                  : "Select a category to get started."}
-              </p>
-            </div>
-          )}
+        {/* RIGHT PANEL */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="drag-region h-12 w-full shrink-0" />
+          <div className="flex-1 overflow-y-auto">
+            {selectedFile && selectedSkill ? (
+              <FilePreviewView
+                filePath={selectedFile.path}
+                fileName={selectedFile.name}
+                skillName={selectedSkill.name}
+                onBack={handleBackFromFile}
+              />
+            ) : selectedSkill ? (
+              <SkillDetailView
+                skill={selectedSkill}
+                onBack={handleBackFromSkill}
+                onRemove={() => handleRemoveSkill(selectedSkill.location)}
+              />
+            ) : selectedServer ? (
+              <ConnectorDetailView
+                server={selectedServer}
+                introspecting={mcpIntrospecting}
+                onBack={() => setSelectedServer(null)}
+                onRemove={handleRemoveConnector}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <p className="text-sm text-text-tertiary">
+                  {section
+                    ? "Select an item to view details."
+                    : "Select a category to get started."}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
