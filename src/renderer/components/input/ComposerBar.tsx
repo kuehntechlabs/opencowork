@@ -120,6 +120,7 @@ export function ComposerBar() {
     useSettingsStore();
   const connected = useServerStore((s) => s.connected);
   const directory = useServerStore((s) => s.directory);
+  const providersVersion = useServerStore((s) => s.providersVersion);
 
   const [modeOpen, setModeOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
@@ -151,7 +152,7 @@ export function ComposerBar() {
         setConnectedIds(res.connected ?? []);
       })
       .catch(() => {});
-  }, [connected, directory]);
+  }, [connected, directory, providersVersion]);
 
   const connectedProviders = useMemo(
     () => allProviders.filter((p) => connectedIds.includes(p.id)),
@@ -178,8 +179,7 @@ export function ComposerBar() {
       .filter((p) => Object.keys(p.models).length > 0);
   }, [connectedProviders, modelSearch]);
 
-  const currentMode =
-    MODES.find((m) => m.value === permissionMode) ?? MODES[0];
+  const currentMode = MODES.find((m) => m.value === permissionMode) ?? MODES[0];
 
   const modelLabel = selectedModel || "Model";
   const folderName = directory?.split("/").pop() || "";
@@ -221,15 +221,10 @@ export function ComposerBar() {
                     setModeOpen(false);
                   }}
                   className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-hover ${
-                    permissionMode === mode.value
-                      ? "text-accent"
-                      : "text-text"
+                    permissionMode === mode.value ? "text-accent" : "text-text"
                   }`}
                 >
-                  <ModeIcon
-                    icon={mode.icon}
-                    className="shrink-0 opacity-60"
-                  />
+                  <ModeIcon icon={mode.icon} className="shrink-0 opacity-60" />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium">{mode.label}</div>
                     <div className="text-[11px] text-text-tertiary">

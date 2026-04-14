@@ -40,6 +40,7 @@ interface Props {
 export function ProviderSettings({ onClose }: Props) {
   const { theme, setTheme } = useSettingsStore();
   const connected = useServerStore((s) => s.connected);
+  const bumpProviders = useServerStore((s) => s.bumpProviders);
 
   const [providers, setProviders] = useState<Provider[]>([]);
   const [connectedIds, setConnectedIds] = useState<string[]>([]);
@@ -57,6 +58,12 @@ export function ProviderSettings({ onClose }: Props) {
   const [authInputs, setAuthInputs] = useState<Record<string, string>>({});
   const [authError, setAuthError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [waitingForOAuth, setWaitingForOAuth] = useState<{
+    providerId: string;
+    methodIndex: number;
+    method: "auto" | "code";
+    instructions?: string;
+  } | null>(null);
 
   // ESC key: close connect panel or go back from connect form
   useEffect(() => {
@@ -64,6 +71,7 @@ export function ProviderSettings({ onClose }: Props) {
       if (e.key === "Escape") {
         if (connectingProvider) {
           e.stopPropagation();
+          setWaitingForOAuth(null);
           setConnectingProvider(null);
           setAuthInputs({});
           setAuthError(null);
@@ -77,6 +85,46 @@ export function ProviderSettings({ onClose }: Props) {
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [showConnect, connectingProvider]);
+
+  // Wait for OAuth callback (sidecar blocks until browser auth completes)
+  useEffect(() => {
+    if (!waitingForOAuth || waitingForOAuth.method !== "auto" || !connected)
+      return;
+    let cancelled = false;
+    const callCallback = async () => {
+      try {
+        const res = await fetch(
+          `${getBaseUrl()}/provider/${waitingForOAuth.providerId}/oauth/callback`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ method: waitingForOAuth.methodIndex }),
+          },
+        );
+        if (cancelled) return;
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Failed (${res.status})`);
+        }
+        refresh();
+        bumpProviders();
+        setWaitingForOAuth(null);
+        setConnectingProvider(null);
+        setAuthInputs({});
+        setShowConnect(false);
+      } catch (err) {
+        if (cancelled) return;
+        setWaitingForOAuth(null);
+        setAuthError(
+          err instanceof Error ? err.message : "Authorization failed",
+        );
+      }
+    };
+    callCallback();
+    return () => {
+      cancelled = true;
+    };
+  }, [waitingForOAuth, connected]);
 
   const refresh = (showSpinner = false) => {
     if (!connected) return;
@@ -162,11 +210,22 @@ export function ProviderSettings({ onClose }: Props) {
           throw new Error(text || `Failed (${res.status})`);
         }
         const data = await res.json();
-        if (data?.url) window.open(data.url, "_blank");
+        if (data?.url) {
+          window.open(data.url, "_blank");
+          setWaitingForOAuth({
+            providerId,
+            methodIndex,
+            method: data.method ?? "auto",
+            instructions: data.instructions,
+          });
+          setSaving(false);
+          return;
+        }
       }
 
-      // Refresh
+      // Refresh (API key flow)
       refresh();
+      bumpProviders();
       setConnectingProvider(null);
       setAuthInputs({});
       setShowConnect(false);
@@ -181,6 +240,7 @@ export function ProviderSettings({ onClose }: Props) {
     try {
       await fetch(`${getBaseUrl()}/auth/${providerId}`, { method: "DELETE" });
       setConnectedIds((ids) => ids.filter((id) => id !== providerId));
+      bumpProviders();
     } catch {
       // ignore
     }
@@ -312,8 +372,14 @@ export function ProviderSettings({ onClose }: Props) {
               setInputs={setAuthInputs}
               error={authError}
               saving={saving}
+              waitingForOAuth={
+                waitingForOAuth?.providerId === connectingProvider
+                  ? waitingForOAuth
+                  : null
+              }
               onConnect={handleConnect}
               onCancel={() => {
+                setWaitingForOAuth(null);
                 setConnectingProvider(null);
                 setAuthInputs({});
                 setAuthError(null);
@@ -429,6 +495,7 @@ function ConnectForm({
   setInputs,
   error,
   saving,
+  waitingForOAuth,
   onConnect,
   onCancel,
 }: {
@@ -439,6 +506,12 @@ function ConnectForm({
   setInputs: (inputs: Record<string, string>) => void;
   error: string | null;
   saving: boolean;
+  waitingForOAuth: {
+    providerId: string;
+    methodIndex: number;
+    method: "auto" | "code";
+    instructions?: string;
+  } | null;
   onConnect: (
     providerId: string,
     methodIndex: number,
@@ -578,16 +651,22 @@ function ConnectForm({
         </p>
       )}
 
+      {waitingForOAuth && (
+        <OAuthWaiting waitingForOAuth={waitingForOAuth} onCancel={onCancel} />
+      )}
+
       {error && <p className="mb-3 text-xs text-red-400">{error}</p>}
 
-      <button
-        onClick={() => onConnect(providerId, selectedMethod, method)}
-        disabled={saving}
-        className="flex w-full items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm text-accent-text hover:bg-accent/80 disabled:opacity-50"
-      >
-        {saving && <Spinner size={14} />}
-        {saving ? "Connecting..." : "Connect"}
-      </button>
+      {!waitingForOAuth && (
+        <button
+          onClick={() => onConnect(providerId, selectedMethod, method)}
+          disabled={saving}
+          className="flex w-full items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm text-accent-text hover:bg-accent/80 disabled:opacity-50"
+        >
+          {saving && <Spinner size={14} />}
+          {saving ? "Connecting..." : "Connect"}
+        </button>
+      )}
     </div>
   );
 }
@@ -602,6 +681,107 @@ interface OllamaRunningModel {
   name: string;
   size: number;
   expires_at: string;
+}
+
+function OAuthWaiting({
+  waitingForOAuth,
+  onCancel,
+}: {
+  waitingForOAuth: {
+    providerId: string;
+    methodIndex: number;
+    method: "auto" | "code";
+    instructions?: string;
+  };
+  onCancel: () => void;
+}) {
+  const [code, setCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+
+  const handleSubmitCode = async () => {
+    if (!code.trim()) return;
+    setSubmitting(true);
+    setCodeError(null);
+    try {
+      const res = await fetch(
+        `${getBaseUrl()}/provider/${waitingForOAuth.providerId}/oauth/callback`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            method: waitingForOAuth.methodIndex,
+            code: code.trim(),
+          }),
+        },
+      );
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Failed (${res.status})`);
+      }
+      // Success — parent will handle via the effect cleanup
+    } catch (err) {
+      setCodeError(err instanceof Error ? err.message : "Authorization failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="mb-3">
+      <div className="rounded-md border border-accent/30 bg-accent/5 px-3 py-3">
+        {waitingForOAuth.method === "auto" ? (
+          <>
+            <div className="flex items-center gap-2">
+              <Spinner size={14} />
+              <p className="text-sm font-medium text-text">
+                Waiting for login...
+              </p>
+            </div>
+            <p className="mt-1.5 text-xs text-text-tertiary">
+              {waitingForOAuth.instructions ||
+                "Complete the sign-in in your browser. This will update automatically once you\u2019re authenticated."}
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="mb-2 text-sm font-medium text-text">
+              {waitingForOAuth.instructions ||
+                "Paste the authorization code from your browser"}
+            </p>
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="Authorization code"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSubmitCode();
+              }}
+              className="mb-2 w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none"
+            />
+            {codeError && (
+              <p className="mb-2 text-xs text-red-400">{codeError}</p>
+            )}
+            <button
+              onClick={handleSubmitCode}
+              disabled={submitting || !code.trim()}
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm text-accent-text hover:bg-accent/80 disabled:opacity-50"
+            >
+              {submitting && <Spinner size={14} />}
+              {submitting ? "Verifying..." : "Submit code"}
+            </button>
+          </>
+        )}
+      </div>
+      <button
+        onClick={onCancel}
+        className="mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 py-2 text-sm text-text hover:bg-surface-hover"
+      >
+        Cancel
+      </button>
+    </div>
+  );
 }
 
 function formatSize(bytes: number): string {
