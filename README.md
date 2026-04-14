@@ -60,7 +60,7 @@ Browse and install [MCP servers](https://modelcontextprotocol.io/) from the offi
 
 ### Skills & Customization
 
-Discover, install, and manage AI skills. Customize your agent's behavior with custom instructions and skill configurations.
+Discover, install, and manage AI skills. Create new skills by uploading `.md`, `.zip`, or `.skill` files, or write skill instructions directly in the app. Customize your agent's behavior with custom instructions and skill configurations.
 
 ![Skill Marketplace](docs/screenshots/skills.png)
 

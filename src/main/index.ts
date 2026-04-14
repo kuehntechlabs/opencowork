@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   ipcMain,
   dialog,
+  session,
   shell,
   nativeImage,
 } from "electron";
@@ -16,6 +17,7 @@ import {
   writeFileSync,
   readFileSync,
   copyFileSync,
+  cpSync,
   rmSync,
 } from "node:fs";
 import log from "electron-log";
@@ -69,6 +71,20 @@ function createWindow() {
     shell.openExternal(url);
     return { action: "deny" };
   });
+
+  // Set Content-Security-Policy in production
+  if (!process.env.ELECTRON_RENDERER_URL) {
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          "Content-Security-Policy": [
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://localhost:* https:; font-src 'self' data:;",
+          ],
+        },
+      });
+    });
+  }
 
   if (process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -207,6 +223,121 @@ ipcMain.handle("remove-skill", async (_event, location: string) => {
     const msg = err instanceof Error ? err.message : "Unknown error";
     return { ok: false, output: msg };
   }
+});
+
+// Create skill from uploaded file (.md, .zip, .skill)
+ipcMain.handle("create-skill-from-file", async (_event, filePath: string) => {
+  try {
+    const skillsDir = join(homedir(), ".claude", "skills");
+    if (!existsSync(skillsDir)) mkdirSync(skillsDir, { recursive: true });
+
+    const ext = filePath.toLowerCase().split(".").pop() || "";
+
+    if (ext === "md") {
+      // Read the .md file and extract skill name from YAML frontmatter
+      const content = readFileSync(filePath, "utf-8");
+      const nameMatch = content.match(/^---[\s\S]*?name:\s*(.+?)[\s\r\n]/m);
+      if (!nameMatch) {
+        return {
+          ok: false,
+          output: "Invalid SKILL.md: missing 'name' in YAML frontmatter.",
+        };
+      }
+      const skillName = nameMatch[1].trim().replace(/[^a-zA-Z0-9_-]/g, "-");
+      const destDir = join(skillsDir, skillName);
+      if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+      copyFileSync(filePath, join(destDir, "SKILL.md"));
+      return { ok: true, output: `Skill "${skillName}" created.` };
+    } else if (ext === "zip" || ext === "skill") {
+      // Extract zip/skill to a temp dir, find SKILL.md, then move to skills dir
+      const tmpDir = join(app.getPath("temp"), `skill-extract-${Date.now()}`);
+      mkdirSync(tmpDir, { recursive: true });
+      try {
+        await execFileAsync("unzip", ["-o", filePath, "-d", tmpDir], {
+          timeout: 30_000,
+        });
+        // Find SKILL.md in extracted contents
+        const findSkillMd = (dir: string): string | null => {
+          for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            if (entry.name === "SKILL.md" && entry.isFile()) return dir;
+            if (entry.isDirectory() && !entry.name.startsWith(".")) {
+              const found = findSkillMd(join(dir, entry.name));
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        const skillRoot = findSkillMd(tmpDir);
+        if (!skillRoot) {
+          rmSync(tmpDir, { recursive: true, force: true });
+          return { ok: false, output: "Archive must contain a SKILL.md file." };
+        }
+        // Read skill name from SKILL.md frontmatter
+        const mdContent = readFileSync(join(skillRoot, "SKILL.md"), "utf-8");
+        const nm = mdContent.match(/^---[\s\S]*?name:\s*(.+?)[\s\r\n]/m);
+        const skillName = nm
+          ? nm[1].trim().replace(/[^a-zA-Z0-9_-]/g, "-")
+          : `skill-${Date.now()}`;
+        const destDir = join(skillsDir, skillName);
+        if (existsSync(destDir))
+          rmSync(destDir, { recursive: true, force: true });
+        // Copy extracted skill directory
+        cpSync(skillRoot, destDir, { recursive: true });
+        rmSync(tmpDir, { recursive: true, force: true });
+        return { ok: true, output: `Skill "${skillName}" created.` };
+      } catch (err: unknown) {
+        rmSync(tmpDir, { recursive: true, force: true });
+        throw err;
+      }
+    } else {
+      return { ok: false, output: `Unsupported file type: .${ext}` };
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return { ok: false, output: msg };
+  }
+});
+
+// Create skill from written instructions (name, description, instructions)
+ipcMain.handle(
+  "create-skill-from-instructions",
+  async (_event, name: string, description: string, instructions: string) => {
+    try {
+      const skillsDir = join(homedir(), ".claude", "skills");
+      if (!existsSync(skillsDir)) mkdirSync(skillsDir, { recursive: true });
+
+      const safeName = name.trim().replace(/[^a-zA-Z0-9_-]/g, "-");
+      if (!safeName) return { ok: false, output: "Skill name is required." };
+
+      const destDir = join(skillsDir, safeName);
+      if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+
+      const content = `---
+name: ${name.trim()}
+description: ${description.trim()}
+---
+
+${instructions.trim()}
+`;
+      writeFileSync(join(destDir, "SKILL.md"), content, "utf-8");
+      return { ok: true, output: `Skill "${safeName}" created.` };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      return { ok: false, output: msg };
+    }
+  },
+);
+
+// Open native file picker for skill files
+ipcMain.handle("pick-skill-file", async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Upload Skill",
+    filters: [{ name: "Skill files", extensions: ["md", "zip", "skill"] }],
+    properties: ["openFile"],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
 });
 
 // Proxy fetch (bypass CORS for renderer)

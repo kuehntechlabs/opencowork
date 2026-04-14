@@ -156,6 +156,29 @@ const api = {
     filePath: string,
   ): Promise<{ type: "text" | "image"; content: string } | null> =>
     ipcRenderer.invoke("read-skill-file", filePath),
+
+  // Create skill from uploaded file (.md, .zip, .skill)
+  createSkillFromFile: (
+    filePath: string,
+  ): Promise<{ ok: boolean; output: string }> =>
+    ipcRenderer.invoke("create-skill-from-file", filePath),
+
+  // Create skill from written instructions
+  createSkillFromInstructions: (
+    name: string,
+    description: string,
+    instructions: string,
+  ): Promise<{ ok: boolean; output: string }> =>
+    ipcRenderer.invoke(
+      "create-skill-from-instructions",
+      name,
+      description,
+      instructions,
+    ),
+
+  // Pick a skill file via native dialog
+  pickSkillFile: (): Promise<string | null> =>
+    ipcRenderer.invoke("pick-skill-file"),
 };
 
 contextBridge.exposeInMainWorld("api", api);
