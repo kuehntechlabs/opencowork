@@ -1,4 +1,5 @@
-import type { Message, AssistantMessage } from "../../api/types";
+import { useMemo } from "react";
+import type { Message, AssistantMessage, TextPart } from "../../api/types";
 import { useSessionStore } from "../../stores/session-store";
 import { TextContent } from "./TextContent";
 import { ReasoningBlock } from "./ReasoningBlock";
@@ -12,7 +13,17 @@ const emptyParts: never[] = [];
 
 export function MessageBubble({ message }: Props) {
   const isUser = message.role === "user";
-  const parts = useSessionStore((s) => s.parts[message.id]) ?? emptyParts;
+  const allParts = useSessionStore((s) => s.parts[message.id]) ?? emptyParts;
+  // For user messages, filter out synthetic parts (e.g. expanded skill templates)
+  const parts = useMemo(
+    () =>
+      isUser
+        ? allParts.filter(
+            (p) => p.type !== "text" || !(p as TextPart).synthetic,
+          )
+        : allParts,
+    [isUser, allParts],
+  );
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -23,10 +34,24 @@ export function MessageBubble({ message }: Props) {
             : "bg-surface-secondary text-text"
         }`}
       >
-        {/* User messages - show text from first text part or indicate it's a prompt */}
-        {isUser && parts.length === 0 && (
-          <span className="text-sm opacity-70">Sent a message</span>
-        )}
+        {/* User messages - show command name if all text was synthetic, or fallback */}
+        {isUser &&
+          parts.length === 0 &&
+          (() => {
+            const syntheticText = allParts.find(
+              (p) => p.type === "text" && (p as TextPart).synthetic,
+            ) as TextPart | undefined;
+            if (syntheticText) {
+              // Extract command name from the beginning of the synthetic text
+              const match = syntheticText.text.match(/^\/(\S+)/);
+              return (
+                <span className="text-sm font-medium opacity-90">
+                  /{match ? match[1] : "command"}
+                </span>
+              );
+            }
+            return <span className="text-sm opacity-70">Sent a message</span>;
+          })()}
 
         {/* Render parts */}
         {parts.map((part) => {

@@ -17,6 +17,8 @@ interface SessionState {
   parts: Record<string, Part[]>;
   sessionStatus: Record<string, SessionStatus>;
   permissionRequests: Record<string, PermissionRequest>;
+  /** Maps messageId → "/command" display text for command-originated messages */
+  commandMessages: Record<string, string>;
   loading: boolean;
 
   // Actions
@@ -57,6 +59,8 @@ interface SessionState {
   ) => void;
   addPermissionRequest: (request: PermissionRequest) => void;
   removePermissionRequest: (requestId: string) => void;
+  /** Track that a command was sent, so the next user message can show the command name */
+  setPendingCommand: (sessionId: string, commandName: string) => void;
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -66,6 +70,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   parts: {},
   sessionStatus: {},
   permissionRequests: {},
+  commandMessages: {},
   loading: false,
 
   setActiveSession: (id) => {
@@ -279,4 +284,20 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const { [requestId]: _, ...rest } = s.permissionRequests;
       return { permissionRequests: rest };
     }),
+
+  setPendingCommand: (sessionId, commandName) =>
+    set((s) => ({
+      // Store as sessionId → commandName; consumed by upsertMessage
+      _pendingCommands: {
+        ...((s as Record<string, unknown>)._pendingCommands as
+          | Record<string, string>
+          | undefined),
+        [sessionId]: commandName,
+      },
+    })),
 }));
+
+// Internal: pending commands map (not exposed in the interface, just used internally)
+declare module "zustand" {
+  // eslint-disable-next-line @typescript-eslint/no-empty-interface
+}

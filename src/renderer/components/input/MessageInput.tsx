@@ -83,73 +83,60 @@ export function MessageInput({
   const effectiveActiveId =
     activeCommand?.id ?? filteredCommands[0]?.id ?? null;
 
-  const handleSlashSelect = useCallback(
-    (cmd: SlashCommand) => {
-      // For custom commands, if there's extra text after the trigger, pass it as args
-      if (cmd.type === "custom") {
-        const parts = text.trim().split(/\s+/);
-        const args = parts.slice(1).join(" ");
-        executeCustomCommand(cmd.trigger, args);
-      } else {
-        cmd.onSelect();
+  const handleSlashSelect = useCallback((cmd: SlashCommand) => {
+    if (cmd.type === "custom") {
+      // Custom commands (skills): insert trigger text, let user press Enter to send
+      setText(`/${cmd.trigger} `);
+      if (textareaRef.current) {
+        textareaRef.current.focus();
       }
+    } else {
+      // Built-in commands (model, agent, etc.): execute immediately
+      cmd.onSelect();
       setText("");
       if (textareaRef.current) {
         textareaRef.current.style.height = "auto";
         textareaRef.current.focus();
       }
-    },
-    [text, executeCustomCommand],
-  );
-
-  const handleSend = useCallback(() => {
-    if (!text.trim() || disabled) return;
-
-    // If in slash mode and there's an active command, execute it
-    if (isSlashMode && effectiveActiveId) {
-      const cmd = filteredCommands.find((c) => c.id === effectiveActiveId);
-      if (cmd) {
-        handleSlashSelect(cmd);
-        return;
-      }
     }
+  }, []);
 
-    // Check if text starts with a slash command that takes args (e.g., "/fix some args")
-    if (text.trim().startsWith("/")) {
-      const [head, ...tail] = text.trim().split(/\s+/);
-      const cmdName = head.slice(1);
-      // Try to find a matching command even when there are args
-      const allCmds = filterCommands("");
-      const matchedCmd = allCmds.find((c) => c.trigger === cmdName);
-      if (matchedCmd) {
-        if (matchedCmd.type === "custom") {
-          executeCustomCommand(matchedCmd.trigger, tail.join(" "));
-        } else {
-          matchedCmd.onSelect();
-        }
-        setText("");
-        if (textareaRef.current) {
-          textareaRef.current.style.height = "auto";
-        }
-        return;
-      }
-    }
-
-    onSend(text.trim());
+  const clearInput = useCallback(() => {
     setText("");
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
+  }, []);
+
+  const handleSend = useCallback(() => {
+    if (!text.trim() || disabled) return;
+
+    // If in slash mode and there's an active command, select it first
+    if (isSlashMode && effectiveActiveId) {
+      const cmd = filteredCommands.find((c) => c.id === effectiveActiveId);
+      if (cmd) {
+        if (cmd.type === "custom") {
+          // Insert command text, user presses Enter again to execute
+          setText(`/${cmd.trigger} `);
+          return;
+        }
+        cmd.onSelect();
+        clearInput();
+        return;
+      }
+    }
+
+    // Send everything through onSend — parent handles command detection
+    onSend(text.trim());
+    clearInput();
   }, [
     text,
     disabled,
     isSlashMode,
     effectiveActiveId,
     filteredCommands,
-    handleSlashSelect,
-    filterCommands,
-    executeCustomCommand,
     onSend,
+    clearInput,
   ]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

@@ -6,6 +6,7 @@ import { useServerStore } from "../../stores/server-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useProjectStore } from "../../stores/project-store";
 import { useCurrentAgent } from "../input/ComposerBar";
+import * as api from "../../api/client";
 import lampIconUrl from "../../assets/lamp-icon.png";
 
 export function HomeView() {
@@ -21,24 +22,43 @@ export function HomeView() {
   const setDirectory = useServerStore((s) => s.setDirectory);
   const { addRecentDirectory } = useProjectStore();
 
+  const ensureDirectory = useCallback(async () => {
+    if (directory) return directory;
+    const path = await window.api.openDirectoryPicker();
+    if (!path) return null;
+    setDirectory(path);
+    addRecentDirectory(path);
+    return path;
+  }, [directory, setDirectory, addRecentDirectory]);
+
   const handleSend = useCallback(
     async (text: string) => {
       if (!text.trim() || !connected) return;
 
-      // Default to user home directory if none selected
-      let dir = directory;
-      if (!dir) {
-        const path = await window.api.openDirectoryPicker();
-        if (!path) return;
-        dir = path;
-        setDirectory(dir);
-        addRecentDirectory(dir);
-      }
+      const dir = await ensureDirectory();
+      if (!dir) return;
 
       setSending(true);
       try {
         const action = permissionMode === "bypass" ? "allow" : "ask";
         const session = await createSession(dir, action);
+
+        // Detect slash commands: "/command args"
+        if (text.startsWith("/")) {
+          const [head, ...tail] = text.split(/\s+/);
+          const commandName = head.slice(1);
+          if (commandName) {
+            const model =
+              selectedProvider && selectedModel
+                ? `${selectedProvider}/${selectedModel}`
+                : undefined;
+            await api.executeCommand(session.id, commandName, tail.join(" "), {
+              model,
+            });
+            return;
+          }
+        }
+
         const model =
           selectedProvider && selectedModel
             ? { providerID: selectedProvider, modelID: selectedModel }
@@ -51,16 +71,14 @@ export function HomeView() {
       }
     },
     [
-      directory,
       connected,
+      ensureDirectory,
       createSession,
       sendPrompt,
       selectedProvider,
       selectedModel,
       permissionMode,
       agent,
-      setDirectory,
-      addRecentDirectory,
     ],
   );
 

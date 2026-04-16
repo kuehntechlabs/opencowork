@@ -6,6 +6,7 @@ import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useCurrentAgent } from "../input/ComposerBar";
 import { useArtifactDetector } from "../../hooks/useArtifactDetector";
+import * as api from "../../api/client";
 
 interface Props {
   sessionId: string;
@@ -32,6 +33,23 @@ export function ChatView({ sessionId }: Props) {
       if (status?.type === "busy") {
         await abortSession(sessionId);
       }
+
+      // Detect slash commands: "/command args"
+      if (text.startsWith("/")) {
+        const [head, ...tail] = text.split(/\s+/);
+        const commandName = head.slice(1);
+        if (commandName) {
+          const model =
+            selectedProvider && selectedModel
+              ? `${selectedProvider}/${selectedModel}`
+              : undefined;
+          await api
+            .executeCommand(sessionId, commandName, tail.join(" "), { model })
+            .catch((err) => console.error("Command execution failed:", err));
+          return;
+        }
+      }
+
       const model =
         selectedProvider && selectedModel
           ? { providerID: selectedProvider, modelID: selectedModel }
