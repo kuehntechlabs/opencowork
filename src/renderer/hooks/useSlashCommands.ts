@@ -2,6 +2,7 @@ import { useMemo, useCallback, useState, useEffect } from "react";
 import { useSessionStore } from "../stores/session-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { useServerStore } from "../stores/server-store";
+import { useProjectStore } from "../stores/project-store";
 import * as api from "../api/client";
 import type { CustomCommand } from "../api/client";
 
@@ -14,24 +15,32 @@ export interface SlashCommand {
   type: "builtin" | "custom";
   source?: "skill" | "mcp" | "command";
   disabled?: boolean;
-  onSelect: () => void;
+  onSelect: (args: string) => void | boolean | Promise<void | boolean>;
 }
 
 export function useSlashCommands({
   onModelOpen,
+  onVariantToggle,
   onAgentCycle,
   onExecuteCustomCommand,
 }: {
   onModelOpen?: () => void;
+  onVariantToggle?: () => void;
   onAgentCycle?: () => void;
-  onExecuteCustomCommand?: (command: string, args: string) => void;
+  onExecuteCustomCommand?: (
+    command: string,
+    args: string,
+  ) => void | boolean | Promise<void | boolean>;
 } = {}) {
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
   const sessions = useSessionStore((s) => s.sessions);
   const messages = useSessionStore((s) => s.messages);
   const sessionStatus = useSessionStore((s) => s.sessionStatus);
   const { selectedProvider, selectedModel } = useSettingsStore();
+  const setRightPanelPage = useSettingsStore((s) => s.setRightPanelPage);
   const connected = useServerStore((s) => s.connected);
+  const setDirectory = useServerStore((s) => s.setDirectory);
+  const addRecentDirectory = useProjectStore((s) => s.addRecentDirectory);
 
   const [customCommands, setCustomCommands] = useState<CustomCommand[]>([]);
 
@@ -84,6 +93,23 @@ export function useSlashCommands({
       });
   }, [activeSessionId, selectedProvider, selectedModel]);
 
+  const notifyUnavailable = useCallback((feature: string) => {
+    window.api
+      .showNotification("Not available in OpenCowork", `${feature} is not available in this UI yet.`)
+      .catch(() => {});
+  }, []);
+
+  const startNewSession = useCallback(() => {
+    useSessionStore.getState().setActiveSession(null);
+  }, []);
+
+  const openDirectory = useCallback(async () => {
+    const path = await window.api.openDirectoryPicker();
+    if (!path) return;
+    setDirectory(path);
+    addRecentDirectory(path);
+  }, [setDirectory, addRecentDirectory]);
+
   const fork = useCallback(async () => {
     if (!activeSessionId) return;
     const directory = useServerStore.getState().directory;
@@ -127,9 +153,22 @@ export function useSlashCommands({
     onModelOpen?.();
   }, [onModelOpen]);
 
+  const toggleVariant = useCallback(() => {
+    if (!selectedProvider || !selectedModel) {
+      notifyUnavailable("Model variant");
+      return;
+    }
+    onVariantToggle?.();
+  }, [selectedProvider, selectedModel, notifyUnavailable, onVariantToggle]);
+
   const cycleAgent = useCallback(() => {
     onAgentCycle?.();
   }, [onAgentCycle]);
+
+  const openMcp = useCallback(() => {
+    setRightPanelPage("customize");
+    window.dispatchEvent(new CustomEvent("opencowork:open-customize-connectors"));
+  }, [setRightPanelPage]);
 
   const commands = useMemo<SlashCommand[]>(() => {
     // Custom commands from backend (skills, MCPs)
@@ -146,13 +185,31 @@ export function useSlashCommands({
             : "Custom",
       type: "custom" as const,
       source: cmd.source,
-      onSelect: () => {
-        onExecuteCustomCommand?.(cmd.name, "");
+      onSelect: (args) => {
+        return onExecuteCustomCommand?.(cmd.name, args);
       },
     }));
 
     // Built-in commands
     const builtin: SlashCommand[] = [
+      {
+        id: "session.new",
+        trigger: "new",
+        title: "New Session",
+        description: "Start a new chat session",
+        category: "Session",
+        type: "builtin",
+        onSelect: startNewSession,
+      },
+      {
+        id: "file.open",
+        trigger: "open",
+        title: "Open Folder",
+        description: "Choose and switch to another folder",
+        category: "File",
+        type: "builtin",
+        onSelect: openDirectory,
+      },
       {
         id: "session.undo",
         trigger: "undo",
@@ -254,18 +311,13 @@ export function useSlashCommands({
         onSelect: openModel,
       },
       {
-        id: "model.variant",
+        id: "model.variant.cycle",
         trigger: "variant",
         title: "Variant",
-        description: "Cycle model variant (quality level)",
+        description: "Open the model variant picker",
         category: "Model",
         type: "builtin",
-        onSelect: () => {
-          // Dispatch event for variant cycling
-          window.dispatchEvent(
-            new CustomEvent("opencowork:cycle-variant"),
-          );
-        },
+        onSelect: toggleVariant,
       },
       {
         id: "mcp.toggle",
@@ -274,11 +326,7 @@ export function useSlashCommands({
         description: "Toggle MCP servers",
         category: "MCP",
         type: "builtin",
-        onSelect: () => {
-          window.dispatchEvent(
-            new CustomEvent("opencowork:open-mcp-picker"),
-          );
-        },
+        onSelect: openMcp,
       },
       {
         id: "agent.cycle",
@@ -289,18 +337,37 @@ export function useSlashCommands({
         type: "builtin",
         onSelect: cycleAgent,
       },
+      {
+        id: "terminal.toggle",
+        trigger: "terminal",
+        title: "Terminal",
+        description: "Open terminal panel",
+        category: "View",
+        type: "builtin",
+        onSelect: () => notifyUnavailable("Terminal panel"),
+      },
+      {
+        id: "workspace.toggle",
+        trigger: "workspace",
+        title: "Workspace",
+        description: "Toggle workspace mode",
+        category: "Workspace",
+        type: "builtin",
+        onSelect: () => notifyUnavailable("Workspace mode"),
+      },
     ];
 
     // Custom first, then builtins (matching opencode order)
     return [...custom, ...builtin.filter((c) => !c.disabled)];
   }, [
+    startNewSession,
+    openDirectory,
     activeSessionId,
     hasMessages,
     selectedProvider,
     selectedModel,
     session,
     customCommands,
-    userMessages.length,
     undo,
     redo,
     compact,
@@ -308,9 +375,29 @@ export function useSlashCommands({
     share,
     unshare,
     openModel,
+    toggleVariant,
+    openMcp,
     cycleAgent,
+    notifyUnavailable,
     onExecuteCustomCommand,
   ]);
+
+  const executeSlashText = useCallback(
+    async (text: string) => {
+      const value = text.trim();
+      if (!value.startsWith("/")) return false;
+      const [head, ...tail] = value.split(/\s+/);
+      const trigger = head.slice(1).toLowerCase();
+      if (!trigger) return false;
+      const args = tail.join(" ");
+      const command = commands.find((c) => c.trigger.toLowerCase() === trigger);
+      if (!command) return false;
+      const result = await Promise.resolve(command.onSelect(args));
+      if (result === false) return false;
+      return true;
+    },
+    [commands],
+  );
 
   const filterCommands = useCallback(
     (query: string) => {
@@ -326,5 +413,5 @@ export function useSlashCommands({
     [commands],
   );
 
-  return { commands, filterCommands };
+  return { commands, filterCommands, executeSlashText };
 }

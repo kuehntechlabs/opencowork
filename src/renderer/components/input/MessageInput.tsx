@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { VoiceButton } from "./VoiceButton";
 import { ComposerBar } from "./ComposerBar";
 import { SlashPopover } from "./SlashPopover";
@@ -31,38 +31,58 @@ export function MessageInput({
   const [text, setText] = useState("");
   const [slashActive, setSlashActive] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mouseGuardUntilRef = useRef(0);
 
   const permissionMode = useSettingsStore((s) => s.permissionMode);
   const setPermissionMode = useSettingsStore((s) => s.setPermissionMode);
-  const { selectedProvider, selectedModel } = useSettingsStore();
+  const { selectedProvider, selectedModel, selectedVariant } =
+    useSettingsStore();
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
   const connected = useServerStore((s) => s.connected);
 
+  const cyclePermissionMode = useCallback(
+    (direction: 1 | -1 = 1) => {
+      const modes = ["ask", "auto-accept", "plan", "bypass"] as const;
+      const currentIndex = modes.indexOf(permissionMode);
+      const baseIndex = currentIndex >= 0 ? currentIndex : 0;
+      const nextIndex =
+        (baseIndex + direction + modes.length) % modes.length;
+      setPermissionMode(modes[nextIndex]);
+    },
+    [permissionMode, setPermissionMode],
+  );
+
   const executeCustomCommand = useCallback(
     async (command: string, args: string) => {
-      if (!activeSessionId) return;
+      if (!activeSessionId) return false;
       const model =
         selectedProvider && selectedModel
           ? `${selectedProvider}/${selectedModel}`
           : undefined;
       await api
-        .executeCommand(activeSessionId, command, args, { model })
+        .executeCommand(activeSessionId, command, args, {
+          model,
+          variant: selectedVariant ?? undefined,
+        })
         .catch((err) => {
           console.error("Command execution failed:", err);
         });
+      return true;
     },
-    [activeSessionId, selectedProvider, selectedModel],
+    [activeSessionId, selectedProvider, selectedModel, selectedVariant],
   );
 
-  const { filterCommands } = useSlashCommands({
+  const { filterCommands, executeSlashText } = useSlashCommands({
     onModelOpen: () => {
       window.dispatchEvent(new CustomEvent("opencowork:open-model-picker"));
     },
+    onVariantToggle: () => {
+      window.dispatchEvent(
+        new CustomEvent("opencowork:toggle-variant-picker"),
+      );
+    },
     onAgentCycle: () => {
-      const modes = ["ask", "auto-accept", "plan", "bypass"] as const;
-      const idx = modes.indexOf(permissionMode);
-      const next = modes[(idx + 1) % modes.length];
-      setPermissionMode(next);
+      cyclePermissionMode(1);
     },
     onExecuteCustomCommand: executeCustomCommand,
   });
@@ -83,6 +103,42 @@ export function MessageInput({
   const effectiveActiveId =
     activeCommand?.id ?? filteredCommands[0]?.id ?? null;
 
+  useEffect(() => {
+    if (!isSlashMode) {
+      if (slashActive !== null) setSlashActive(null);
+      return;
+    }
+    if (filteredCommands.length === 0) {
+      if (slashActive !== null) setSlashActive(null);
+      return;
+    }
+    if (!slashActive || !filteredCommands.some((c) => c.id === slashActive)) {
+      setSlashActive(filteredCommands[0].id);
+    }
+  }, [isSlashMode, filteredCommands, slashActive]);
+
+  const setActiveFromMouse = useCallback((id: string) => {
+    if (Date.now() < mouseGuardUntilRef.current) return;
+    setSlashActive(id);
+  }, []);
+
+  const moveSlashActive = useCallback(
+    (delta: 1 | -1) => {
+      if (filteredCommands.length === 0) return;
+      mouseGuardUntilRef.current = Date.now() + 300;
+      setSlashActive((prev) => {
+        const currentIndex = prev
+          ? filteredCommands.findIndex((c) => c.id === prev)
+          : 0;
+        const index = currentIndex >= 0 ? currentIndex : 0;
+        const nextIndex =
+          (index + delta + filteredCommands.length) % filteredCommands.length;
+        return filteredCommands[nextIndex].id;
+      });
+    },
+    [filteredCommands],
+  );
+
   const handleSlashSelect = useCallback((cmd: SlashCommand) => {
     if (cmd.type === "custom") {
       // Custom commands (skills): insert trigger text, let user press Enter to send
@@ -92,7 +148,7 @@ export function MessageInput({
       }
     } else {
       // Built-in commands (model, agent, etc.): execute immediately
-      cmd.onSelect();
+      void cmd.onSelect("");
       setText("");
       if (textareaRef.current) {
         textareaRef.current.style.height = "auto";
@@ -111,7 +167,7 @@ export function MessageInput({
   const handleSend = useCallback(() => {
     if (!text.trim() || disabled) return;
 
-    // If in slash mode and there's an active command, select it first
+    // Match opencode behavior: when slash menu is open, Enter selects active item first.
     if (isSlashMode && effectiveActiveId) {
       const cmd = filteredCommands.find((c) => c.id === effectiveActiveId);
       if (cmd) {
@@ -120,18 +176,31 @@ export function MessageInput({
           setText(`/${cmd.trigger} `);
           return;
         }
-        cmd.onSelect();
+        void cmd.onSelect("");
         clearInput();
         return;
       }
     }
 
-    // Send everything through onSend — parent handles command detection
+    if (text.trimStart().startsWith("/")) {
+      void executeSlashText(text).then((handled) => {
+        if (handled) {
+          clearInput();
+          return;
+        }
+        onSend(text.trim());
+        clearInput();
+      });
+      return;
+    }
+
+    // Send plain prompts to parent
     onSend(text.trim());
     clearInput();
   }, [
     text,
     disabled,
+    executeSlashText,
     isSlashMode,
     effectiveActiveId,
     filteredCommands,
@@ -143,23 +212,12 @@ export function MessageInput({
     if (isSlashMode && filteredCommands.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        const idx = filteredCommands.findIndex(
-          (c) => c.id === effectiveActiveId,
-        );
-        const next = filteredCommands[(idx + 1) % filteredCommands.length];
-        setSlashActive(next.id);
+        moveSlashActive(1);
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        const idx = filteredCommands.findIndex(
-          (c) => c.id === effectiveActiveId,
-        );
-        const prev =
-          filteredCommands[
-            (idx - 1 + filteredCommands.length) % filteredCommands.length
-          ];
-        setSlashActive(prev.id);
+        moveSlashActive(-1);
         return;
       }
       if (e.key === "Tab") {
@@ -175,6 +233,12 @@ export function MessageInput({
         setText("");
         return;
       }
+    }
+
+    if (e.key === "Tab") {
+      e.preventDefault();
+      cyclePermissionMode(e.shiftKey ? -1 : 1);
+      return;
     }
 
     if (e.key === "Enter" && !e.shiftKey) {
@@ -203,7 +267,7 @@ export function MessageInput({
           commands={filteredCommands}
           activeId={effectiveActiveId}
           onSelect={handleSlashSelect}
-          onActiveChange={setSlashActive}
+          onActiveChange={setActiveFromMouse}
         />
       )}
 

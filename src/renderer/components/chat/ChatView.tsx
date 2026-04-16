@@ -6,7 +6,6 @@ import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useCurrentAgent } from "../input/ComposerBar";
 import { useArtifactDetector } from "../../hooks/useArtifactDetector";
-import * as api from "../../api/client";
 
 interface Props {
   sessionId: string;
@@ -21,7 +20,8 @@ export function ChatView({ sessionId }: Props) {
   const status = useSessionStore((s) => s.sessionStatus[sessionId]);
   const sendPrompt = useSessionStore((s) => s.sendPrompt);
   const abortSession = useSessionStore((s) => s.abortSession);
-  const { selectedProvider, selectedModel } = useSettingsStore();
+  const { selectedProvider, selectedModel, selectedVariant } =
+    useSettingsStore();
   const agent = useCurrentAgent();
   const isBusy = status?.type === "busy";
 
@@ -34,27 +34,15 @@ export function ChatView({ sessionId }: Props) {
         await abortSession(sessionId);
       }
 
-      // Detect slash commands: "/command args"
-      if (text.startsWith("/")) {
-        const [head, ...tail] = text.split(/\s+/);
-        const commandName = head.slice(1);
-        if (commandName) {
-          const model =
-            selectedProvider && selectedModel
-              ? `${selectedProvider}/${selectedModel}`
-              : undefined;
-          await api
-            .executeCommand(sessionId, commandName, tail.join(" "), { model })
-            .catch((err) => console.error("Command execution failed:", err));
-          return;
-        }
-      }
-
       const model =
         selectedProvider && selectedModel
           ? { providerID: selectedProvider, modelID: selectedModel }
           : undefined;
-      await sendPrompt(sessionId, text, { model, agent });
+      await sendPrompt(sessionId, text, {
+        model,
+        agent,
+        variant: selectedVariant ?? undefined,
+      });
     },
     [
       sessionId,
@@ -63,6 +51,7 @@ export function ChatView({ sessionId }: Props) {
       status,
       selectedProvider,
       selectedModel,
+      selectedVariant,
       agent,
     ],
   );

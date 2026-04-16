@@ -111,6 +111,7 @@ export async function sendPrompt(
   options?: {
     model?: { providerID: string; modelID: string };
     agent?: string;
+    variant?: string;
   },
 ): Promise<void> {
   // Inject artifact instructions on the first message of each session
@@ -216,7 +217,7 @@ export async function executeCommand(
     variant?: string;
   },
 ): Promise<void> {
-  await fetch(`${baseUrl}/session/${sessionId}/command`, {
+  const res = await fetch(`${baseUrl}/session/${sessionId}/command`, {
     method: "POST",
     headers: buildHeaders(),
     body: JSON.stringify({
@@ -225,6 +226,11 @@ export async function executeCommand(
       ...options,
     }),
   });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Command API error ${res.status}: ${text}`);
+  }
 }
 
 // Skill API — lists all available skills with their info

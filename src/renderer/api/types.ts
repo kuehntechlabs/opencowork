@@ -186,6 +186,7 @@ export interface Provider {
 export interface Model {
   id: string;
   name: string;
+  variants?: Record<string, unknown>;
   cost?: {
     input: number;
     output: number;

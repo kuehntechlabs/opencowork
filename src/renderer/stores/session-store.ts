@@ -19,6 +19,7 @@ interface SessionState {
   permissionRequests: Record<string, PermissionRequest>;
   /** Maps messageId → "/command" display text for command-originated messages */
   commandMessages: Record<string, string>;
+  _pendingCommands: Record<string, string>;
   loading: boolean;
 
   // Actions
@@ -38,6 +39,7 @@ interface SessionState {
     options?: {
       model?: { providerID: string; modelID: string };
       agent?: string;
+      variant?: string;
     },
   ) => Promise<void>;
   abortSession: (id: string) => Promise<void>;
@@ -71,6 +73,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   sessionStatus: {},
   permissionRequests: {},
   commandMessages: {},
+  _pendingCommands: {},
   loading: false,
 
   setActiveSession: (id) => {
@@ -288,16 +291,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setPendingCommand: (sessionId, commandName) =>
     set((s) => ({
       // Store as sessionId → commandName; consumed by upsertMessage
-      _pendingCommands: {
-        ...((s as Record<string, unknown>)._pendingCommands as
-          | Record<string, string>
-          | undefined),
-        [sessionId]: commandName,
-      },
+      _pendingCommands: { ...s._pendingCommands, [sessionId]: commandName },
     })),
 }));
-
-// Internal: pending commands map (not exposed in the interface, just used internally)
-declare module "zustand" {
-  // eslint-disable-next-line @typescript-eslint/no-empty-interface
-}

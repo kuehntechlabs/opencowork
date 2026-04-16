@@ -113,6 +113,24 @@ export function CustomizePage() {
   );
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
 
+  useEffect(() => {
+    const openConnectors = () => {
+      setSection("connectors");
+      setSelectedSkill(null);
+      setSelectedFile(null);
+      setSelectedServer(null);
+    };
+    window.addEventListener(
+      "opencowork:open-customize-connectors",
+      openConnectors,
+    );
+    return () =>
+      window.removeEventListener(
+        "opencowork:open-customize-connectors",
+        openConnectors,
+      );
+  }, []);
+
   // Load skills when section becomes "skills"
   useEffect(() => {
     if (section !== "skills") return;
@@ -1675,31 +1693,37 @@ function ToolsTab({ tools }: { tools: MCPTool[] }) {
                       Parameters
                     </h5>
                     <div className="flex flex-col gap-1.5">
-                      {Object.entries(properties).map(([name, prop]) => (
-                        <div
-                          key={name}
-                          className="rounded-md bg-surface px-3 py-2"
-                        >
-                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                            <code className="font-mono text-xs text-accent">
-                              {name}
-                            </code>
-                            <span className="text-[11px] text-text-tertiary">
-                              {(prop.type as string) || "any"}
-                            </span>
-                            {required.includes(name) && (
-                              <span className="rounded bg-red-500/10 px-1 py-0.5 text-[9px] font-medium text-red-400">
-                                required
+                      {Object.entries(properties).map(([name, prop]) => {
+                        const propInfo = prop as {
+                          type?: string;
+                          description?: string;
+                        };
+                        return (
+                          <div
+                            key={name}
+                            className="rounded-md bg-surface px-3 py-2"
+                          >
+                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                              <code className="font-mono text-xs text-accent">
+                                {name}
+                              </code>
+                              <span className="text-[11px] text-text-tertiary">
+                                {propInfo.type || "any"}
                               </span>
+                              {required.includes(name) && (
+                                <span className="rounded bg-red-500/10 px-1 py-0.5 text-[9px] font-medium text-red-400">
+                                  required
+                                </span>
+                              )}
+                            </div>
+                            {propInfo.description && (
+                              <p className="mt-1 text-xs leading-relaxed text-text-secondary">
+                                {propInfo.description}
+                              </p>
                             )}
                           </div>
-                          {prop.description && (
-                            <p className="mt-1 text-xs leading-relaxed text-text-secondary">
-                              {prop.description as string}
-                            </p>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (

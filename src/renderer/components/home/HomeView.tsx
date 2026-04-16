@@ -6,7 +6,7 @@ import { useServerStore } from "../../stores/server-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useProjectStore } from "../../stores/project-store";
 import { useCurrentAgent } from "../input/ComposerBar";
-import * as api from "../../api/client";
+import { executeKnownCustomSlashCommand } from "../../utils/slash-command";
 import lampIconUrl from "../../assets/lamp-icon.png";
 
 export function HomeView() {
@@ -14,7 +14,7 @@ export function HomeView() {
   const sendPrompt = useSessionStore((s) => s.sendPrompt);
   const directory = useServerStore((s) => s.directory);
   const connected = useServerStore((s) => s.connected);
-  const { selectedProvider, selectedModel, permissionMode } =
+  const { selectedProvider, selectedModel, selectedVariant, permissionMode } =
     useSettingsStore();
   const agent = useCurrentAgent();
   const [sending, setSending] = useState(false);
@@ -43,27 +43,29 @@ export function HomeView() {
         const action = permissionMode === "bypass" ? "allow" : "ask";
         const session = await createSession(dir, action);
 
-        // Detect slash commands: "/command args"
-        if (text.startsWith("/")) {
-          const [head, ...tail] = text.split(/\s+/);
-          const commandName = head.slice(1);
-          if (commandName) {
-            const model =
-              selectedProvider && selectedModel
-                ? `${selectedProvider}/${selectedModel}`
-                : undefined;
-            await api.executeCommand(session.id, commandName, tail.join(" "), {
-              model,
-            });
-            return;
-          }
+        const modelName =
+          selectedProvider && selectedModel
+            ? `${selectedProvider}/${selectedModel}`
+            : undefined;
+        const ranCustomSlash = await executeKnownCustomSlashCommand({
+          sessionId: session.id,
+          text,
+          model: modelName,
+          variant: selectedVariant ?? undefined,
+        });
+        if (ranCustomSlash) {
+          return;
         }
 
         const model =
           selectedProvider && selectedModel
             ? { providerID: selectedProvider, modelID: selectedModel }
             : undefined;
-        await sendPrompt(session.id, text, { model, agent });
+        await sendPrompt(session.id, text, {
+          model,
+          agent,
+          variant: selectedVariant ?? undefined,
+        });
       } catch (err) {
         console.error("Failed to create session:", err);
       } finally {
@@ -77,6 +79,7 @@ export function HomeView() {
       sendPrompt,
       selectedProvider,
       selectedModel,
+      selectedVariant,
       permissionMode,
       agent,
     ],

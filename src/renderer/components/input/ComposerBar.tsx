@@ -116,25 +116,36 @@ function ModeIcon({ icon, className }: { icon: string; className?: string }) {
 }
 
 export function ComposerBar() {
-  const { permissionMode, setPermissionMode, selectedProvider, selectedModel } =
-    useSettingsStore();
+  const {
+    permissionMode,
+    setPermissionMode,
+    selectedProvider,
+    selectedModel,
+    selectedVariant,
+    setSelectedVariant,
+  } = useSettingsStore();
   const connected = useServerStore((s) => s.connected);
   const directory = useServerStore((s) => s.directory);
   const providersVersion = useServerStore((s) => s.providersVersion);
 
   const [modeOpen, setModeOpen] = useState(false);
+  const [variantOpen, setVariantOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
   const [allProviders, setAllProviders] = useState<Provider[]>([]);
   const [connectedIds, setConnectedIds] = useState<string[]>([]);
 
   const modeRef = useRef<HTMLDivElement>(null);
+  const variantRef = useRef<HTMLDivElement>(null);
   const modelRef = useRef<HTMLDivElement>(null);
+  const modelSearchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (modeRef.current && !modeRef.current.contains(e.target as Node))
         setModeOpen(false);
+      if (variantRef.current && !variantRef.current.contains(e.target as Node))
+        setVariantOpen(false);
       if (modelRef.current && !modelRef.current.contains(e.target as Node)) {
         setModelOpen(false);
         setModelSearch("");
@@ -142,6 +153,21 @@ export function ComposerBar() {
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  useEffect(() => {
+    const onOpenModelPicker = () => {
+      setModeOpen(false);
+      setVariantOpen(false);
+      setModelOpen(true);
+      requestAnimationFrame(() => modelSearchRef.current?.focus());
+    };
+    window.addEventListener("opencowork:open-model-picker", onOpenModelPicker);
+    return () =>
+      window.removeEventListener(
+        "opencowork:open-model-picker",
+        onOpenModelPicker,
+      );
   }, []);
 
   useEffect(() => {
@@ -181,6 +207,52 @@ export function ComposerBar() {
 
   const currentMode = MODES.find((m) => m.value === permissionMode) ?? MODES[0];
 
+  const currentModel = useMemo(() => {
+    if (!selectedProvider || !selectedModel) return undefined;
+    const provider = allProviders.find((p) => p.id === selectedProvider);
+    return provider?.models?.[selectedModel];
+  }, [allProviders, selectedProvider, selectedModel]);
+
+  const variantOptions = useMemo(
+    () =>
+      Object.keys(currentModel?.variants ?? {}).filter(
+        (variant) => variant !== "default",
+      ),
+    [currentModel],
+  );
+  const showVariantControl = variantOptions.length > 0;
+
+  useEffect(() => {
+    const onToggleVariantPicker = () => {
+      if (!showVariantControl) return;
+      setModeOpen(false);
+      setModelOpen(false);
+      setVariantOpen(true);
+    };
+    window.addEventListener(
+      "opencowork:toggle-variant-picker",
+      onToggleVariantPicker,
+    );
+    return () =>
+      window.removeEventListener(
+        "opencowork:toggle-variant-picker",
+        onToggleVariantPicker,
+      );
+  }, [showVariantControl]);
+
+  useEffect(() => {
+    if (!selectedVariant) return;
+    if (!variantOptions.includes(selectedVariant)) {
+      setSelectedVariant(null);
+    }
+  }, [selectedVariant, variantOptions, setSelectedVariant]);
+
+  useEffect(() => {
+    if (!showVariantControl && variantOpen) {
+      setVariantOpen(false);
+    }
+  }, [showVariantControl, variantOpen]);
+
   const modelLabel = selectedModel || "Model";
   const folderName = directory?.split("/").pop() || "";
 
@@ -193,6 +265,7 @@ export function ComposerBar() {
           <button
             onClick={() => {
               setModeOpen(!modeOpen);
+              setVariantOpen(false);
               setModelOpen(false);
             }}
             className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
@@ -251,31 +324,116 @@ export function ComposerBar() {
         </div>
 
         {/* Right: model selector */}
-        <div ref={modelRef} className="relative">
-          <button
-            onClick={() => {
-              setModelOpen(!modelOpen);
-              setModeOpen(false);
-            }}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
-          >
-            {modelLabel}
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
+        <div className="flex items-center gap-1">
+          {showVariantControl && (
+            <div ref={variantRef} className="relative">
+              <button
+                onClick={() => {
+                  setVariantOpen(!variantOpen);
+                  setModeOpen(false);
+                  setModelOpen(false);
+                }}
+                className="flex items-center gap-1 rounded-md border border-border/50 bg-transparent px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-hover"
+                title="Model variant"
+              >
+                {selectedVariant ?? "default"}
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
 
-          {modelOpen && (
-            <div className="absolute bottom-full right-0 z-50 mb-1 w-72 rounded-lg border border-border bg-surface-secondary shadow-lg">
+              {variantOpen && (
+                <div className="absolute bottom-full right-0 z-50 mb-1 min-w-32 rounded-lg border border-border bg-surface-secondary py-1 shadow-lg">
+                  <button
+                    onClick={() => {
+                      setSelectedVariant(null);
+                      setVariantOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs transition-colors hover:bg-surface-hover ${
+                      selectedVariant === null ? "text-accent" : "text-text"
+                    }`}
+                  >
+                    default
+                    {selectedVariant === null && (
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        className="shrink-0 text-accent"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </button>
+                  {variantOptions.map((variant) => (
+                    <button
+                      key={variant}
+                      onClick={() => {
+                        setSelectedVariant(variant);
+                        setVariantOpen(false);
+                      }}
+                      className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs transition-colors hover:bg-surface-hover ${
+                        selectedVariant === variant ? "text-accent" : "text-text"
+                      }`}
+                    >
+                      {variant}
+                      {selectedVariant === variant && (
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          className="shrink-0 text-accent"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div ref={modelRef} className="relative">
+            <button
+              onClick={() => {
+                setModelOpen(!modelOpen);
+                setModeOpen(false);
+                setVariantOpen(false);
+              }}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
+            >
+              {modelLabel}
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+
+            {modelOpen && (
+              <div className="absolute bottom-full right-0 z-50 mb-1 w-72 rounded-lg border border-border bg-surface-secondary shadow-lg">
               <div className="border-b border-border/30 p-2">
                 <input
+                  ref={modelSearchRef}
                   type="text"
                   value={modelSearch}
                   onChange={(e) => setModelSearch(e.target.value)}
@@ -352,19 +510,20 @@ export function ComposerBar() {
                 )}
               </div>
 
-              <div className="border-t border-border/30 px-3 py-1.5">
-                <button
-                  onClick={() => {
-                    setModelOpen(false);
-                    openSettings();
-                  }}
-                  className="text-[10px] text-text-tertiary hover:text-text"
-                >
-                  Connect provider
-                </button>
+                <div className="border-t border-border/30 px-3 py-1.5">
+                  <button
+                    onClick={() => {
+                      setModelOpen(false);
+                      openSettings();
+                    }}
+                    className="text-[10px] text-text-tertiary hover:text-text"
+                  >
+                    Connect provider
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
