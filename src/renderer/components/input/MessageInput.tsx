@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { VoiceButton } from "./VoiceButton";
 import { ComposerBar } from "./ComposerBar";
 import { SlashPopover } from "./SlashPopover";
 import {
@@ -398,10 +397,6 @@ export function MessageInput({
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
-  const handleVoiceTranscript = useCallback((transcript: string) => {
-    setText((prev) => (prev ? prev + " " + transcript : transcript));
-  }, []);
-
   return (
     <div
       className={
@@ -514,7 +509,6 @@ export function MessageInput({
               <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.58 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
             </svg>
           </button>
-          <VoiceButton onTranscript={handleVoiceTranscript} />
           {isBusy ? (
             <button
               onClick={onAbort}

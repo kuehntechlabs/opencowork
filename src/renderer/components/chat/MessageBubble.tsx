@@ -91,6 +91,24 @@ export function MessageBubble({ message }: Props) {
                 </div>
               );
             case "file":
+              if (part.mime?.startsWith("image/")) {
+                return (
+                  <a
+                    key={part.id}
+                    href={part.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="my-1 block"
+                    title={part.filename}
+                  >
+                    <img
+                      src={part.url}
+                      alt={part.filename || "image"}
+                      className="max-h-80 max-w-full rounded-lg border border-border/40 object-contain"
+                    />
+                  </a>
+                );
+              }
               return (
                 <div
                   key={part.id}
