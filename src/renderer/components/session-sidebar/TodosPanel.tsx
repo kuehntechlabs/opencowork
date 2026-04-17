@@ -16,7 +16,11 @@ export function TodosPanel({ sessionId }: Props) {
     if (!todos || todos.length === 0) return [];
     return [...todos].sort((a, b) => {
       const rank = (t: { status: string }) =>
-        t.status === "in-progress" ? 0 : t.status === "completed" ? 2 : 1;
+        t.status === "in_progress" || t.status === "in-progress"
+          ? 0
+          : t.status === "completed"
+            ? 2
+            : 1;
       return rank(a) - rank(b);
     });
   }, [todos]);
@@ -31,33 +35,34 @@ export function TodosPanel({ sessionId }: Props) {
   return (
     <SidebarCard title="Todos">
       <ul className="space-y-1">
-        {visible.map((t, i) => (
-          <li
-            key={i}
-            className={
-              "flex items-start gap-1.5 text-xs " +
-              (t.status === "completed"
-                ? "text-text-tertiary line-through"
-                : t.status === "in-progress"
-                  ? "text-accent"
-                  : "text-text-secondary")
-            }
-          >
-            <span className="mt-0.5 flex-shrink-0 font-mono">
-              {t.status === "completed"
-                ? "[✓]"
-                : t.status === "in-progress"
-                  ? "[•]"
-                  : "[ ]"}
-            </span>
-            <span className="flex-1">{t.content}</span>
-          </li>
-        ))}
+        {visible.map((t, i) => {
+          const isDone = t.status === "completed";
+          const isActive =
+            t.status === "in_progress" || t.status === "in-progress";
+          return (
+            <li
+              key={i}
+              className={
+                "flex items-start gap-2 text-xs leading-snug " +
+                (isDone
+                  ? "text-text-tertiary line-through"
+                  : isActive
+                    ? "text-text"
+                    : "text-text-secondary")
+              }
+            >
+              <StatusIcon
+                status={isDone ? "done" : isActive ? "active" : "pending"}
+              />
+              <span className="flex-1 break-words">{t.content}</span>
+            </li>
+          );
+        })}
       </ul>
       {sorted.length > COLLAPSE_AFTER && (
         <button
           onClick={() => setExpanded((v) => !v)}
-          className="mt-1 text-[11px] text-text-tertiary hover:text-text"
+          className="mt-1.5 text-[11px] text-text-tertiary hover:text-text"
         >
           {expanded
             ? "Show less"
@@ -65,5 +70,33 @@ export function TodosPanel({ sessionId }: Props) {
         </button>
       )}
     </SidebarCard>
+  );
+}
+
+function StatusIcon({ status }: { status: "done" | "active" | "pending" }) {
+  if (status === "done") {
+    return (
+      <svg
+        className="mt-0.5 flex-shrink-0 text-green-500"
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+    );
+  }
+  if (status === "active") {
+    return (
+      <span className="mt-1 flex h-2 w-2 flex-shrink-0 rounded-full bg-accent" />
+    );
+  }
+  return (
+    <span className="mt-1 flex h-2 w-2 flex-shrink-0 rounded-full border border-text-tertiary/60" />
   );
 }

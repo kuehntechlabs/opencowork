@@ -229,6 +229,13 @@ export type MCPStatus =
   | { status: "needs_auth" }
   | { status: "needs_client_registration"; error: string };
 
+export interface LspStatus {
+  id: string;
+  name: string;
+  root: string;
+  status: "connected" | "error";
+}
+
 export interface AgentInfo {
   name: string;
   description: string;
@@ -305,6 +312,7 @@ export type ServerEvent =
       properties: { sessionID: string; requestID: string; reply: string };
     }
   | { type: "todo.updated"; properties: { sessionID: string; todos: Todo[] } }
+  | { type: "lsp.updated"; properties: Record<string, unknown> }
   | { type: "question.asked"; properties: QuestionRequest }
   | {
       type: "question.replied";

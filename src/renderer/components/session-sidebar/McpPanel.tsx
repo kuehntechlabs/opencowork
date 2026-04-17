@@ -1,25 +1,23 @@
 import { useEffect } from "react";
 import { useSessionStore } from "../../stores/session-store";
+import type { MCPStatus } from "../../api/types";
 import { SidebarCard } from "./SidebarCard";
 
-function statusLabel(status: { status: string; error?: string }) {
-  switch (status.status) {
+function dotColor(s: MCPStatus): string {
+  switch (s.status) {
     case "connected":
-      return { text: "Connected", color: "text-green-500" };
+      return "bg-green-500";
     case "disabled":
-      return { text: "Disabled", color: "text-text-tertiary" };
-    case "failed":
-      return {
-        text: status.error ? `Failed: ${status.error}` : "Failed",
-        color: "text-red-400",
-      };
-    case "needs_auth":
-      return { text: "Needs auth", color: "text-yellow-500" };
-    case "needs_client_registration":
-      return { text: "Needs registration", color: "text-yellow-500" };
+      return "bg-text-tertiary/50";
     default:
-      return { text: status.status, color: "text-text-tertiary" };
+      return "bg-red-500";
   }
+}
+
+function subtitle(s: MCPStatus): string | null {
+  if ("error" in s && s.error) return s.error;
+  if (s.status === "needs_auth") return "needs auth";
+  return null;
 }
 
 export function McpPanel() {
@@ -37,16 +35,25 @@ export function McpPanel() {
     <SidebarCard title={`MCP (${entries.length})`}>
       <ul className="space-y-1">
         {entries.map(([name, s]) => {
-          const { text, color } = statusLabel(s);
+          const sub = subtitle(s);
           return (
-            <li
-              key={name}
-              className="flex items-center justify-between gap-2 text-xs"
-            >
-              <span className="min-w-0 truncate text-text-secondary">
-                {name}
-              </span>
-              <span className={`text-[11px] ${color}`}>{text}</span>
+            <li key={name} className="flex items-start gap-2 text-xs">
+              <span
+                className={
+                  "mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full " + dotColor(s)
+                }
+              />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-text-secondary">{name}</div>
+                {sub && (
+                  <div
+                    className="truncate text-[10px] text-text-tertiary"
+                    title={sub}
+                  >
+                    {sub}
+                  </div>
+                )}
+              </div>
             </li>
           );
         })}

@@ -10,6 +10,7 @@ import type {
   FileDiff,
   QuestionRequest,
   MCPStatus,
+  LspStatus,
   Provider,
 } from "../api/types";
 import * as api from "../api/client";
@@ -28,6 +29,7 @@ interface SessionState {
   /** Pending model questions keyed by sessionId → callID */
   pendingQuestions: Record<string, Record<string, QuestionRequest>>;
   mcpStatus: Record<string, MCPStatus>;
+  lspStatus: LspStatus[];
   providers: Provider[];
   /** Maps messageId → "/command" display text for command-originated messages */
   commandMessages: Record<string, string>;
@@ -74,10 +76,12 @@ interface SessionState {
   addPermissionRequest: (request: PermissionRequest) => void;
   removePermissionRequest: (requestId: string) => void;
   upsertTodos: (sessionId: string, todos: Todo[]) => void;
+  loadTodos: (sessionId: string) => Promise<void>;
   loadSessionDiff: (sessionId: string) => Promise<void>;
   upsertPendingQuestion: (request: QuestionRequest) => void;
   clearPendingQuestion: (sessionId: string, requestId: string) => void;
   loadMcpStatus: () => Promise<void>;
+  loadLspStatus: () => Promise<void>;
   loadProviders: () => Promise<void>;
   /** Track that a command was sent, so the next user message can show the command name */
   setPendingCommand: (sessionId: string, commandName: string) => void;
@@ -94,6 +98,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   sessionDiffs: {},
   pendingQuestions: {},
   mcpStatus: {},
+  lspStatus: [],
   providers: [],
   commandMessages: {},
   _pendingCommands: {},
@@ -320,6 +325,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       todos: { ...s.todos, [sessionId]: todos },
     })),
 
+  loadTodos: async (sessionId) => {
+    try {
+      const todos = await api.getTodos(sessionId);
+      set((s) => ({
+        todos: { ...s.todos, [sessionId]: todos },
+      }));
+    } catch {
+      /* silent */
+    }
+  },
+
   loadSessionDiff: async (sessionId) => {
     try {
       const diff = await api.getSessionDiff(sessionId);
@@ -347,6 +363,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     try {
       const status = await api.getMCPStatus();
       set({ mcpStatus: status });
+    } catch {
+      /* silent */
+    }
+  },
+
+  loadLspStatus: async () => {
+    try {
+      const status = await api.getLspStatus();
+      set({ lspStatus: status });
     } catch {
       /* silent */
     }

@@ -133,6 +133,10 @@ function handleEvent(event: GlobalEvent) {
       store.upsertTodos(payload.properties.sessionID, payload.properties.todos);
       break;
 
+    case "lsp.updated":
+      store.loadLspStatus();
+      break;
+
     case "question.asked":
       store.upsertPendingQuestion(payload.properties);
       break;

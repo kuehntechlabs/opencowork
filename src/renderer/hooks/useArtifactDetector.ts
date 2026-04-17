@@ -72,10 +72,9 @@ export function useArtifactDetector(sessionId: string) {
                   artifactIdMap.current.set(partial.identifier, existing.id);
                   store.updateArtifactContent(existing.id, partial.content);
                   if (partial.complete && existing.loading) {
+                    // Loading → done transition: reveal it. After this, never
+                    // auto-reopen — the user may have closed the panel.
                     store.setArtifactLoading(existing.id, false);
-                  }
-                  if (existing.createdByMessageId === latestAssistantId) {
-                    store.setActiveArtifact(existing.id);
                   }
                 } else {
                   const id = store.addArtifact({

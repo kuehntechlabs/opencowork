@@ -55,11 +55,17 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
   addArtifact: (artifact) => {
     const id = generateId();
     const full: Artifact = { ...artifact, id, createdAt: Date.now() };
-    set((s) => ({
-      artifacts: { ...s.artifacts, [id]: full },
-      activeArtifactId: id,
-      panelOpen: true,
-    }));
+    set((s) => {
+      // Only auto-open the right panel once the artifact is fully built.
+      // While streaming (loading: true) we track it silently and pop the
+      // panel on the loading→done transition via `setArtifactLoading`.
+      const reveal = !artifact.loading;
+      return {
+        artifacts: { ...s.artifacts, [id]: full },
+        activeArtifactId: reveal ? id : s.activeArtifactId,
+        panelOpen: reveal ? true : s.panelOpen,
+      };
+    });
     return id;
   },
 
@@ -119,11 +125,11 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
 
       const latest = sessionArtifacts[0];
       // Only auto-activate when the most recent artifact was produced by the
-      // latest assistant message. Otherwise the user's newest message didn't
-      // create an artifact and we shouldn't force the panel open.
+      // latest assistant message AND isn't still streaming.
       if (
         latestAssistantMessageId &&
-        latest.createdByMessageId === latestAssistantMessageId
+        latest.createdByMessageId === latestAssistantMessageId &&
+        !latest.loading
       ) {
         return { activeArtifactId: latest.id };
       }
@@ -143,8 +149,14 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
     set((s) => {
       const existing = s.artifacts[id];
       if (!existing) return {};
+      // When the artifact transitions from streaming → done, reveal it on
+      // the right: activate it and open the panel.
+      const justFinished = existing.loading === true && loading === false;
       return {
         artifacts: { ...s.artifacts, [id]: { ...existing, loading } },
+        ...(justFinished
+          ? { activeArtifactId: id, panelOpen: true }
+          : {}),
       };
     }),
 }));

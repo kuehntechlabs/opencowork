@@ -7,6 +7,8 @@ import type {
   PromptPartInput,
   FileDiff,
   MCPStatus,
+  Todo,
+  LspStatus,
 } from "./types";
 import { useServerStore } from "../stores/server-store";
 import { ARTIFACT_SYSTEM_PROMPT } from "../utils/artifact-prompt";
@@ -288,6 +290,24 @@ export async function getMCPStatus(): Promise<Record<string, MCPStatus>> {
     return await request<Record<string, MCPStatus>>(`/mcp`);
   } catch {
     return {};
+  }
+}
+
+// LSP status — list of language servers and their connectivity
+export async function getLspStatus(): Promise<LspStatus[]> {
+  try {
+    return await request<LspStatus[]>(`/lsp`);
+  } catch {
+    return [];
+  }
+}
+
+// Session todos — the in-session todo list
+export async function getTodos(sessionId: string): Promise<Todo[]> {
+  try {
+    return await request<Todo[]>(`/session/${sessionId}/todo`);
+  } catch {
+    return [];
   }
 }
 
