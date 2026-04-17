@@ -14,6 +14,8 @@ export interface Artifact {
   createdAt: number;
   /** True while the artifact is still streaming (content incomplete) */
   loading?: boolean;
+  /** ID of the assistant message that produced this artifact */
+  createdByMessageId?: string;
 }
 
 interface ArtifactState {
@@ -31,7 +33,7 @@ interface ArtifactState {
   setPanelWidth: (width: number) => void;
   setViewMode: (mode: "preview" | "code") => void;
   clearSessionArtifacts: (sessionId: string) => void;
-  syncToSession: (sessionId: string) => void;
+  syncToSession: (sessionId: string, latestAssistantMessageId?: string) => void;
   updateArtifactContent: (id: string, content: string) => void;
   setArtifactLoading: (id: string, loading: boolean) => void;
 }
@@ -105,17 +107,26 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
       };
     }),
 
-  syncToSession: (sessionId) =>
+  syncToSession: (sessionId, latestAssistantMessageId) =>
     set((s) => {
-      // Find the most recent artifact belonging to this session
       const sessionArtifacts = Object.values(s.artifacts)
         .filter((a) => a.sessionId === sessionId)
         .sort((a, b) => b.createdAt - a.createdAt);
 
-      if (sessionArtifacts.length > 0) {
-        return { activeArtifactId: sessionArtifacts[0].id };
+      if (sessionArtifacts.length === 0) {
+        return { activeArtifactId: null, panelOpen: false };
       }
-      // No artifacts for this session — close the panel
+
+      const latest = sessionArtifacts[0];
+      // Only auto-activate when the most recent artifact was produced by the
+      // latest assistant message. Otherwise the user's newest message didn't
+      // create an artifact and we shouldn't force the panel open.
+      if (
+        latestAssistantMessageId &&
+        latest.createdByMessageId === latestAssistantMessageId
+      ) {
+        return { activeArtifactId: latest.id };
+      }
       return { activeArtifactId: null, panelOpen: false };
     }),
 

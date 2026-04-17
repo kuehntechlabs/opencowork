@@ -85,7 +85,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         get().loadMessages(id);
       }
       // Sync artifact panel to show this session's artifacts
-      useArtifactStore.getState().syncToSession(id);
+      const msgs = get().messages[id] ?? [];
+      const latestAssistant = [...msgs]
+        .reverse()
+        .find((m) => m.role === "assistant");
+      useArtifactStore.getState().syncToSession(id, latestAssistant?.id);
       // Clear any open right panel page when navigating to a session
       useSettingsStore.getState().setRightPanelPage(null);
     }
