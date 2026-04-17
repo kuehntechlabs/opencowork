@@ -14,6 +14,9 @@ const emptyParts: never[] = [];
 export function MessageBubble({ message }: Props) {
   const isUser = message.role === "user";
   const allParts = useSessionStore((s) => s.parts[message.id]) ?? emptyParts;
+  const syntheticText = allParts.find(
+    (p) => p.type === "text" && (p as TextPart).synthetic,
+  ) as TextPart | undefined;
   // For user messages, filter out synthetic parts (e.g. expanded skill templates)
   const parts = useMemo(
     () =>
@@ -24,6 +27,15 @@ export function MessageBubble({ message }: Props) {
         : allParts,
     [isUser, allParts],
   );
+
+  const syntheticCommand = syntheticText?.text
+    .trimStart()
+    .match(/^\/(\S+)/)?.[1]
+    ?.toLowerCase();
+
+  if (isUser && parts.length === 0 && syntheticCommand === "init") {
+    return null;
+  }
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -38,9 +50,6 @@ export function MessageBubble({ message }: Props) {
         {isUser &&
           parts.length === 0 &&
           (() => {
-            const syntheticText = allParts.find(
-              (p) => p.type === "text" && (p as TextPart).synthetic,
-            ) as TextPart | undefined;
             if (syntheticText) {
               // Extract command name from the beginning of the synthetic text
               const match = syntheticText.text.match(/^\/(\S+)/);
