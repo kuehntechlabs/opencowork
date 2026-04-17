@@ -68,6 +68,10 @@ Discover, install, and manage AI skills. Create new skills by uploading `.md`, `
 
 Paste screenshots, drag files from Finder/Explorer, or use the paperclip button to attach images and documents to a message. The composer grows with your prompt up to a third of the window before scrolling. A folder button in the chat header reveals the session's working directory in your OS file manager.
 
+### Session Sidebar
+
+When an artifact isn't open, the right panel shows a compact sidebar for the current chat: token usage against the model's context window, accumulated cost, current todos, and a running list of modified files.
+
 ### Projects
 
 Organize work into projects with dedicated agent instructions (`agents.md`), directory management, and session history.
