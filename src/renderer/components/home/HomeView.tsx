@@ -61,7 +61,7 @@ export function HomeView() {
           selectedProvider && selectedModel
             ? { providerID: selectedProvider, modelID: selectedModel }
             : undefined;
-        await sendPrompt(session.id, text, {
+        await sendPrompt(session.id, [{ type: "text", text }], {
           model,
           agent,
           variant: selectedVariant ?? undefined,
