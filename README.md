@@ -68,6 +68,10 @@ Discover, install, and manage AI skills. Create new skills by uploading `.md`, `
 
 Paste screenshots, drag files from Finder/Explorer, or use the paperclip button to attach images and documents to a message. The composer grows with your prompt up to a third of the window before scrolling. A folder button in the chat header reveals the session's working directory in your OS file manager.
 
+### Interactive Questions
+
+When a model calls opencode's `question` tool (e.g. "pick one of these tasks"), the chat renders an inline picker with radio or checkbox options plus a free-text field for custom answers. Submitting posts back to the blocked tool call so the model resumes with the choice in context.
+
 ### Session Sidebar
 
 When an artifact isn't open, the right panel shows a compact sidebar for the current chat: token usage on the latest reply, accumulated cost, current todos (streamed live from the agent), and a running list of modified files with per-file add/delete counts.

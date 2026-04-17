@@ -269,6 +269,18 @@ export async function listSkills(): Promise<SkillInfo[]> {
   }
 }
 
+// Reply to a question asked by the model via the `question` tool
+export async function replyQuestion(
+  requestId: string,
+  answers: string[][],
+): Promise<void> {
+  await fetch(`${baseUrl}/question/${requestId}/reply`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify({ answers }),
+  });
+}
+
 // Session diff — cumulative file changes for the session
 export async function getSessionDiff(sessionId: string): Promise<FileDiff[]> {
   try {

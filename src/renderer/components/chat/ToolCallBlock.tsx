@@ -2,7 +2,9 @@ import { useState } from "react";
 import type { ToolPart } from "../../api/types";
 import { Spinner } from "../common/Spinner";
 import { useArtifactStore } from "../../stores/artifact-store";
+import { useSessionStore } from "../../stores/session-store";
 import { detectLocalhostUrls } from "../../utils/artifact-detection";
+import { QuestionPrompt } from "./QuestionPrompt";
 
 interface Props {
   part: ToolPart;
@@ -12,6 +14,17 @@ export function ToolCallBlock({ part }: Props) {
   const { state, tool } = part;
   const [expanded, setExpanded] = useState(false);
   const addArtifact = useArtifactStore((s) => s.addArtifact);
+  const pendingQuestion = useSessionStore(
+    (s) => s.pendingQuestions[part.sessionID]?.[part.callID],
+  );
+
+  if (
+    tool === "question" &&
+    (state.status === "pending" || state.status === "running") &&
+    pendingQuestion
+  ) {
+    return <QuestionPrompt request={pendingQuestion} />;
+  }
 
   const statusIcon = () => {
     switch (state.status) {

@@ -132,5 +132,17 @@ function handleEvent(event: GlobalEvent) {
     case "todo.updated":
       store.upsertTodos(payload.properties.sessionID, payload.properties.todos);
       break;
+
+    case "question.asked":
+      store.upsertPendingQuestion(payload.properties);
+      break;
+
+    case "question.replied":
+    case "question.rejected":
+      store.clearPendingQuestion(
+        payload.properties.sessionID,
+        payload.properties.requestID,
+      );
+      break;
   }
 }

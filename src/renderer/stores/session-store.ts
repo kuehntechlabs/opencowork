@@ -8,6 +8,7 @@ import type {
   PromptPartInput,
   Todo,
   FileDiff,
+  QuestionRequest,
 } from "../api/types";
 import * as api from "../api/client";
 import { useSettingsStore } from "./settings-store";
@@ -22,6 +23,8 @@ interface SessionState {
   permissionRequests: Record<string, PermissionRequest>;
   todos: Record<string, Todo[]>;
   sessionDiffs: Record<string, FileDiff[]>;
+  /** Pending model questions keyed by sessionId → callID */
+  pendingQuestions: Record<string, Record<string, QuestionRequest>>;
   /** Maps messageId → "/command" display text for command-originated messages */
   commandMessages: Record<string, string>;
   _pendingCommands: Record<string, string>;
@@ -68,6 +71,8 @@ interface SessionState {
   removePermissionRequest: (requestId: string) => void;
   upsertTodos: (sessionId: string, todos: Todo[]) => void;
   loadSessionDiff: (sessionId: string) => Promise<void>;
+  upsertPendingQuestion: (request: QuestionRequest) => void;
+  clearPendingQuestion: (sessionId: string, requestId: string) => void;
   /** Track that a command was sent, so the next user message can show the command name */
   setPendingCommand: (sessionId: string, commandName: string) => void;
 }
@@ -81,6 +86,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   permissionRequests: {},
   todos: {},
   sessionDiffs: {},
+  pendingQuestions: {},
   commandMessages: {},
   _pendingCommands: {},
   loading: false,
@@ -316,6 +322,31 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // silent — network/sidecar flakiness should not break the UI
     }
   },
+
+  upsertPendingQuestion: (request) =>
+    set((s) => {
+      const key = request.tool?.callID ?? request.id;
+      const existing = s.pendingQuestions[request.sessionID] ?? {};
+      return {
+        pendingQuestions: {
+          ...s.pendingQuestions,
+          [request.sessionID]: { ...existing, [key]: request },
+        },
+      };
+    }),
+
+  clearPendingQuestion: (sessionId, requestId) =>
+    set((s) => {
+      const existing = s.pendingQuestions[sessionId];
+      if (!existing) return {};
+      const next: Record<string, QuestionRequest> = {};
+      for (const [key, req] of Object.entries(existing)) {
+        if (req.id !== requestId) next[key] = req;
+      }
+      return {
+        pendingQuestions: { ...s.pendingQuestions, [sessionId]: next },
+      };
+    }),
 
   setPendingCommand: (sessionId, commandName) =>
     set((s) => ({

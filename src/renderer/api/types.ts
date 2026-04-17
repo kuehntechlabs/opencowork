@@ -294,6 +294,19 @@ export type ServerEvent =
       properties: { sessionID: string; requestID: string; reply: string };
     }
   | { type: "todo.updated"; properties: { sessionID: string; todos: Todo[] } }
+  | { type: "question.asked"; properties: QuestionRequest }
+  | {
+      type: "question.replied";
+      properties: {
+        sessionID: string;
+        requestID: string;
+        answers: string[][];
+      };
+    }
+  | {
+      type: "question.rejected";
+      properties: { sessionID: string; requestID: string };
+    }
   | { type: string; properties: Record<string, unknown> };
 
 export interface Todo {
@@ -309,4 +322,24 @@ export interface FileDiff {
   additions: number;
   deletions: number;
   status?: "added" | "deleted" | "modified";
+}
+
+export interface QuestionOption {
+  label: string;
+  description: string;
+}
+
+export interface QuestionInfo {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiple?: boolean;
+  custom?: boolean;
+}
+
+export interface QuestionRequest {
+  id: string;
+  sessionID: string;
+  questions: QuestionInfo[];
+  tool?: { messageID: string; callID: string };
 }
