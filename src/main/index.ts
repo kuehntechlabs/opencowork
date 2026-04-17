@@ -359,6 +359,67 @@ ipcMain.handle("pick-skill-file", async () => {
   return result.filePaths[0];
 });
 
+// Open native file picker for chat attachments — returns files as base64 data URLs
+const ATTACHMENT_MIME_BY_EXT: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".bmp": "image/bmp",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain",
+  ".md": "text/markdown",
+  ".json": "application/json",
+  ".csv": "text/csv",
+  ".html": "text/html",
+  ".css": "text/css",
+  ".js": "text/javascript",
+  ".ts": "text/typescript",
+};
+
+function mimeFromPath(p: string): string {
+  const i = p.lastIndexOf(".");
+  if (i === -1) return "application/octet-stream";
+  return (
+    ATTACHMENT_MIME_BY_EXT[p.slice(i).toLowerCase()] ||
+    "application/octet-stream"
+  );
+}
+
+ipcMain.handle(
+  "pick-attachments",
+  async (): Promise<
+    { filename: string; mime: string; url: string; size: number }[]
+  > => {
+    if (!mainWindow) return [];
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: "Attach Files",
+      properties: ["openFile", "multiSelections"],
+    });
+    if (result.canceled || result.filePaths.length === 0) return [];
+    const out: { filename: string; mime: string; url: string; size: number }[] =
+      [];
+    for (const p of result.filePaths) {
+      try {
+        const data = readFileSync(p);
+        const mime = mimeFromPath(p);
+        const filename = p.split("/").pop() || p.split("\\").pop() || "file";
+        out.push({
+          filename,
+          mime,
+          url: `data:${mime};base64,${data.toString("base64")}`,
+          size: data.length,
+        });
+      } catch (err) {
+        log.warn("Failed to read attachment:", p, err);
+      }
+    }
+    return out;
+  },
+);
+
 // Proxy fetch (bypass CORS for renderer)
 ipcMain.handle("fetch-url", async (_event, url: string) => {
   const res = await fetch(url);

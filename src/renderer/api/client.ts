@@ -1,4 +1,11 @@
-import type { Session, Message, Part, Provider, AgentInfo } from "./types";
+import type {
+  Session,
+  Message,
+  Part,
+  Provider,
+  AgentInfo,
+  PromptPartInput,
+} from "./types";
 import { useServerStore } from "../stores/server-store";
 import { ARTIFACT_SYSTEM_PROMPT } from "../utils/artifact-prompt";
 
@@ -107,20 +114,25 @@ const injectedSessions = new Set<string>();
 // POST /session/:id/prompt_async sends a prompt and returns immediately (204)
 export async function sendPrompt(
   sessionId: string,
-  parts: Array<{ type: "text"; text: string }>,
+  parts: PromptPartInput[],
   options?: {
     model?: { providerID: string; modelID: string };
     agent?: string;
     variant?: string;
   },
 ): Promise<void> {
-  // Inject artifact instructions on the first message of each session
-  let actualParts = parts;
+  // Inject artifact instructions on the first text part of each session
+  let actualParts: PromptPartInput[] = parts;
   if (!injectedSessions.has(sessionId) && parts.length > 0) {
     injectedSessions.add(sessionId);
-    actualParts = parts.map((p, i) =>
-      i === 0 ? { ...p, text: ARTIFACT_SYSTEM_PROMPT + p.text } : p,
-    );
+    let injected = false;
+    actualParts = parts.map((p) => {
+      if (!injected && p.type === "text") {
+        injected = true;
+        return { ...p, text: ARTIFACT_SYSTEM_PROMPT + p.text };
+      }
+      return p;
+    });
   }
 
   await fetch(`${baseUrl}/session/${sessionId}/prompt_async`, {

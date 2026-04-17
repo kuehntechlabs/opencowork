@@ -64,6 +64,10 @@ Discover, install, and manage AI skills. Create new skills by uploading `.md`, `
 
 ![Skill Marketplace](docs/screenshots/skills.png)
 
+### Chat Composer
+
+Paste screenshots, drag files from Finder/Explorer, or use the paperclip button to attach images and documents to a message. The composer grows with your prompt up to a third of the window before scrolling.
+
 ### Projects
 
 Organize work into projects with dedicated agent instructions (`agents.md`), directory management, and session history.

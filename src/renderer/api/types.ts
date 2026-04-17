@@ -156,6 +156,20 @@ export interface FilePart {
   url: string;
 }
 
+export interface TextPartInput {
+  type: "text";
+  text: string;
+}
+
+export interface FilePartInput {
+  type: "file";
+  mime: string;
+  filename?: string;
+  url: string;
+}
+
+export type PromptPartInput = TextPartInput | FilePartInput;
+
 export interface AgentPart {
   id: string;
   sessionID: string;

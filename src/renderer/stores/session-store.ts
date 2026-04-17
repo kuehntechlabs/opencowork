@@ -5,6 +5,7 @@ import type {
   Part,
   SessionStatus,
   PermissionRequest,
+  PromptPartInput,
 } from "../api/types";
 import * as api from "../api/client";
 import { useSettingsStore } from "./settings-store";
@@ -35,7 +36,7 @@ interface SessionState {
   unarchiveSession: (id: string) => Promise<void>;
   sendPrompt: (
     sessionId: string,
-    text: string,
+    parts: PromptPartInput[],
     options?: {
       model?: { providerID: string; modelID: string };
       agent?: string;
@@ -174,8 +175,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }));
   },
 
-  sendPrompt: async (sessionId, text, options) => {
-    await api.sendPrompt(sessionId, [{ type: "text", text }], options);
+  sendPrompt: async (sessionId, parts, options) => {
+    await api.sendPrompt(sessionId, parts, options);
   },
 
   abortSession: async (id) => {

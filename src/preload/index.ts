@@ -179,6 +179,11 @@ const api = {
   // Pick a skill file via native dialog
   pickSkillFile: (): Promise<string | null> =>
     ipcRenderer.invoke("pick-skill-file"),
+
+  // Pick chat attachments via native dialog — returns base64 data URLs directly
+  pickAttachments: (): Promise<
+    { filename: string; mime: string; url: string; size: number }[]
+  > => ipcRenderer.invoke("pick-attachments"),
 };
 
 contextBridge.exposeInMainWorld("api", api);

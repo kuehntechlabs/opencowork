@@ -6,6 +6,7 @@ import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useCurrentAgent } from "../input/ComposerBar";
 import { useArtifactDetector } from "../../hooks/useArtifactDetector";
+import type { PromptPartInput } from "../../api/types";
 
 interface Props {
   sessionId: string;
@@ -34,7 +35,7 @@ export function ChatView({ sessionId }: Props) {
   useArtifactDetector(sessionId);
 
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, attachments?: PromptPartInput[]) => {
       // If busy, abort current generation first then send
       if (status?.type === "busy") {
         await abortSession(sessionId);
@@ -44,7 +45,11 @@ export function ChatView({ sessionId }: Props) {
         selectedProvider && selectedModel
           ? { providerID: selectedProvider, modelID: selectedModel }
           : undefined;
-      await sendPrompt(sessionId, text, {
+      const parts: PromptPartInput[] = [
+        ...(attachments ?? []),
+        { type: "text", text },
+      ];
+      await sendPrompt(sessionId, parts, {
         model,
         agent,
         variant: selectedVariant ?? undefined,
