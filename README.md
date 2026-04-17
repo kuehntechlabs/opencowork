@@ -70,7 +70,7 @@ Paste screenshots, drag files from Finder/Explorer, or use the paperclip button 
 
 ### Session Sidebar
 
-When an artifact isn't open, the right panel shows a compact sidebar for the current chat: token usage against the model's context window, accumulated cost, current todos, and a running list of modified files.
+When an artifact isn't open, the right panel shows a compact sidebar for the current chat: token usage on the latest reply, accumulated cost, current todos (streamed live from the agent), and a running list of modified files with per-file add/delete counts.
 
 ### Projects
 

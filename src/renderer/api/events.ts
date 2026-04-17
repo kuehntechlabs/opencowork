@@ -84,6 +84,12 @@ function handleEvent(event: GlobalEvent) {
         payload.properties.sessionID,
         payload.properties.info,
       );
+      if (
+        payload.properties.info.role === "assistant" &&
+        payload.properties.info.time.completed
+      ) {
+        store.loadSessionDiff(payload.properties.sessionID);
+      }
       break;
 
     case "message.removed":
@@ -121,6 +127,10 @@ function handleEvent(event: GlobalEvent) {
 
     case "permission.replied":
       store.removePermissionRequest(payload.properties.requestID);
+      break;
+
+    case "todo.updated":
+      store.upsertTodos(payload.properties.sessionID, payload.properties.todos);
       break;
   }
 }

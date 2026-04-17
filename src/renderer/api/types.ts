@@ -301,3 +301,12 @@ export interface Todo {
   status: string;
   priority: string;
 }
+
+export interface FileDiff {
+  file: string;
+  before: string;
+  after: string;
+  additions: number;
+  deletions: number;
+  status?: "added" | "deleted" | "modified";
+}

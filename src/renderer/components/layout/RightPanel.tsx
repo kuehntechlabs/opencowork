@@ -8,6 +8,7 @@ import { ProjectsPage } from "../pages/ProjectsPage";
 import { CustomizePage } from "../pages/CustomizePage";
 import { DirectoryPage } from "../pages/DirectoryPage";
 import { ArtifactPanel } from "../artifacts/ArtifactPanel";
+import { SessionSidebar } from "../session-sidebar/SessionSidebar";
 import { useDirectoryInstall } from "../../hooks/useDirectoryInstall";
 // Preload skills cache so directory opens fast
 import "../../data/marketplace-fetch";
@@ -162,7 +163,14 @@ export function RightPanel() {
           </div>
         );
       }
-      return <ChatView sessionId={activeSessionId} />;
+      return (
+        <div className="flex h-full w-full">
+          <div className="min-w-0 flex-1">
+            <ChatView sessionId={activeSessionId} />
+          </div>
+          <SessionSidebar sessionId={activeSessionId} />
+        </div>
+      );
     }
     return <HomeView />;
   };

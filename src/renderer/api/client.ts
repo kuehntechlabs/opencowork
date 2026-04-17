@@ -5,6 +5,7 @@ import type {
   Provider,
   AgentInfo,
   PromptPartInput,
+  FileDiff,
 } from "./types";
 import { useServerStore } from "../stores/server-store";
 import { ARTIFACT_SYSTEM_PROMPT } from "../utils/artifact-prompt";
@@ -263,6 +264,15 @@ export interface SkillInfo {
 export async function listSkills(): Promise<SkillInfo[]> {
   try {
     return await request<SkillInfo[]>("/skill");
+  } catch {
+    return [];
+  }
+}
+
+// Session diff — cumulative file changes for the session
+export async function getSessionDiff(sessionId: string): Promise<FileDiff[]> {
+  try {
+    return await request<FileDiff[]>(`/session/${sessionId}/diff`);
   } catch {
     return [];
   }

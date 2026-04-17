@@ -6,6 +6,8 @@ import type {
   SessionStatus,
   PermissionRequest,
   PromptPartInput,
+  Todo,
+  FileDiff,
 } from "../api/types";
 import * as api from "../api/client";
 import { useSettingsStore } from "./settings-store";
@@ -18,6 +20,8 @@ interface SessionState {
   parts: Record<string, Part[]>;
   sessionStatus: Record<string, SessionStatus>;
   permissionRequests: Record<string, PermissionRequest>;
+  todos: Record<string, Todo[]>;
+  sessionDiffs: Record<string, FileDiff[]>;
   /** Maps messageId → "/command" display text for command-originated messages */
   commandMessages: Record<string, string>;
   _pendingCommands: Record<string, string>;
@@ -62,6 +66,8 @@ interface SessionState {
   ) => void;
   addPermissionRequest: (request: PermissionRequest) => void;
   removePermissionRequest: (requestId: string) => void;
+  upsertTodos: (sessionId: string, todos: Todo[]) => void;
+  loadSessionDiff: (sessionId: string) => Promise<void>;
   /** Track that a command was sent, so the next user message can show the command name */
   setPendingCommand: (sessionId: string, commandName: string) => void;
 }
@@ -73,6 +79,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   parts: {},
   sessionStatus: {},
   permissionRequests: {},
+  todos: {},
+  sessionDiffs: {},
   commandMessages: {},
   _pendingCommands: {},
   loading: false,
@@ -292,6 +300,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const { [requestId]: _, ...rest } = s.permissionRequests;
       return { permissionRequests: rest };
     }),
+
+  upsertTodos: (sessionId, todos) =>
+    set((s) => ({
+      todos: { ...s.todos, [sessionId]: todos },
+    })),
+
+  loadSessionDiff: async (sessionId) => {
+    try {
+      const diff = await api.getSessionDiff(sessionId);
+      set((s) => ({
+        sessionDiffs: { ...s.sessionDiffs, [sessionId]: diff },
+      }));
+    } catch {
+      // silent — network/sidecar flakiness should not break the UI
+    }
+  },
 
   setPendingCommand: (sessionId, commandName) =>
     set((s) => ({
