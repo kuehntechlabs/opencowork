@@ -8,6 +8,8 @@ const api = {
   showNotification: (title: string, body: string): Promise<void> =>
     ipcRenderer.invoke("show-notification", title, body),
   getPlatform: (): Promise<string> => ipcRenderer.invoke("get-platform"),
+  openInFileManager: (path: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("open-in-file-manager", path),
   onMenuCommand: (callback: (command: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, command: string) =>
       callback(command);

@@ -1,6 +1,6 @@
 {
   "name": "opencowork",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Desktop UI for OpenCode - AI Coding Agent",
   "type": "module",
   "main": "./out/main/index.js",

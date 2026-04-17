@@ -71,6 +71,18 @@ export function ChatView({ sessionId }: Props) {
     abortSession(sessionId);
   }, [sessionId, abortSession]);
 
+  const openInFileManagerTooltip = useMemo(() => {
+    const platform = navigator.platform.toLowerCase();
+    if (platform.includes("mac")) return "Show in Finder";
+    if (platform.includes("win")) return "Show in Explorer";
+    return "Open folder";
+  }, []);
+
+  const handleOpenInFileManager = useCallback(() => {
+    if (!session?.directory) return;
+    window.api.openInFileManager(session.directory).catch(() => {});
+  }, [session?.directory]);
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
@@ -79,9 +91,31 @@ export function ChatView({ sessionId }: Props) {
           {session?.title || "New Chat"}
         </h2>
         {session?.directory && (
-          <span className="ml-2 truncate text-xs text-text-tertiary">
-            {session.directory}
-          </span>
+          <div className="ml-2 flex min-w-0 items-center gap-1">
+            <span className="truncate text-xs text-text-tertiary">
+              {session.directory}
+            </span>
+            <button
+              type="button"
+              onClick={handleOpenInFileManager}
+              title={openInFileManagerTooltip}
+              aria-label={openInFileManagerTooltip}
+              className="flex-shrink-0 rounded-md p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+              </svg>
+            </button>
+          </div>
         )}
       </div>
 

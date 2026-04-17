@@ -113,6 +113,31 @@ ipcMain.handle("show-notification", (_event, title: string, body: string) => {
 
 ipcMain.handle("get-platform", () => process.platform);
 
+ipcMain.handle(
+  "open-in-file-manager",
+  async (
+    _event,
+    targetPath: string,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      if (!targetPath || !existsSync(targetPath)) {
+        return { ok: false, error: "Path does not exist" };
+      }
+      const isDir = statSync(targetPath).isDirectory();
+      if (isDir) {
+        const err = await shell.openPath(targetPath);
+        if (err) return { ok: false, error: err };
+        return { ok: true };
+      }
+      shell.showItemInFolder(targetPath);
+      return { ok: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      return { ok: false, error: msg };
+    }
+  },
+);
+
 ipcMain.handle("read-provider-config", () => readOpencodeConfig());
 ipcMain.handle(
   "write-provider-config",

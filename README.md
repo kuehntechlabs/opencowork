@@ -66,7 +66,7 @@ Discover, install, and manage AI skills. Create new skills by uploading `.md`, `
 
 ### Chat Composer
 
-Paste screenshots, drag files from Finder/Explorer, or use the paperclip button to attach images and documents to a message. The composer grows with your prompt up to a third of the window before scrolling.
+Paste screenshots, drag files from Finder/Explorer, or use the paperclip button to attach images and documents to a message. The composer grows with your prompt up to a third of the window before scrolling. A folder button in the chat header reveals the session's working directory in your OS file manager.
 
 ### Projects
 
