@@ -6,6 +6,7 @@ import type {
   AgentInfo,
   PromptPartInput,
   FileDiff,
+  MCPStatus,
 } from "./types";
 import { useServerStore } from "../stores/server-store";
 import { ARTIFACT_SYSTEM_PROMPT } from "../utils/artifact-prompt";
@@ -279,6 +280,15 @@ export async function replyQuestion(
     headers: buildHeaders(),
     body: JSON.stringify({ answers }),
   });
+}
+
+// MCP status — map of server name to status
+export async function getMCPStatus(): Promise<Record<string, MCPStatus>> {
+  try {
+    return await request<Record<string, MCPStatus>>(`/mcp`);
+  } catch {
+    return {};
+  }
 }
 
 // Session diff — cumulative file changes for the session

@@ -74,7 +74,7 @@ When a model calls opencode's `question` tool (e.g. "pick one of these tasks"), 
 
 ### Session Sidebar
 
-When an artifact isn't open, the right panel shows a compact sidebar for the current chat: token usage on the latest reply, accumulated cost, current todos (streamed live from the agent), and a running list of modified files with per-file add/delete counts.
+When an artifact isn't open, the right panel shows collapsible cards for the current chat: context window usage with progress bar, running cost, live todos from the agent, modified files with per-file add/delete counts, MCP server status, and the project directory (click to reveal in your file manager).
 
 ### Projects
 

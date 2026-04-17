@@ -9,6 +9,8 @@ import type {
   Todo,
   FileDiff,
   QuestionRequest,
+  MCPStatus,
+  Provider,
 } from "../api/types";
 import * as api from "../api/client";
 import { useSettingsStore } from "./settings-store";
@@ -25,6 +27,8 @@ interface SessionState {
   sessionDiffs: Record<string, FileDiff[]>;
   /** Pending model questions keyed by sessionId → callID */
   pendingQuestions: Record<string, Record<string, QuestionRequest>>;
+  mcpStatus: Record<string, MCPStatus>;
+  providers: Provider[];
   /** Maps messageId → "/command" display text for command-originated messages */
   commandMessages: Record<string, string>;
   _pendingCommands: Record<string, string>;
@@ -73,6 +77,8 @@ interface SessionState {
   loadSessionDiff: (sessionId: string) => Promise<void>;
   upsertPendingQuestion: (request: QuestionRequest) => void;
   clearPendingQuestion: (sessionId: string, requestId: string) => void;
+  loadMcpStatus: () => Promise<void>;
+  loadProviders: () => Promise<void>;
   /** Track that a command was sent, so the next user message can show the command name */
   setPendingCommand: (sessionId: string, commandName: string) => void;
 }
@@ -87,6 +93,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   todos: {},
   sessionDiffs: {},
   pendingQuestions: {},
+  mcpStatus: {},
+  providers: [],
   commandMessages: {},
   _pendingCommands: {},
   loading: false,
@@ -334,6 +342,24 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         },
       };
     }),
+
+  loadMcpStatus: async () => {
+    try {
+      const status = await api.getMCPStatus();
+      set({ mcpStatus: status });
+    } catch {
+      /* silent */
+    }
+  },
+
+  loadProviders: async () => {
+    try {
+      const res = await api.listProviders();
+      set({ providers: res.all ?? [] });
+    } catch {
+      /* silent */
+    }
+  },
 
   clearPendingQuestion: (sessionId, requestId) =>
     set((s) => {

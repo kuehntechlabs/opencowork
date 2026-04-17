@@ -164,8 +164,8 @@ export function RightPanel() {
         );
       }
       return (
-        <div className="flex h-full w-full">
-          <div className="min-w-0 flex-1">
+        <div className="flex h-full w-full overflow-hidden">
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             <ChatView sessionId={activeSessionId} />
           </div>
           <SessionSidebar sessionId={activeSessionId} />

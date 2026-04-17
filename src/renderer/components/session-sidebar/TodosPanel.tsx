@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useSessionStore } from "../../stores/session-store";
+import { SidebarCard } from "./SidebarCard";
 
 interface Props {
   sessionId: string;
@@ -15,7 +16,7 @@ export function TodosPanel({ sessionId }: Props) {
     if (!todos || todos.length === 0) return [];
     return [...todos].sort((a, b) => {
       const rank = (t: { status: string }) =>
-        t.status === "completed" ? 2 : t.status === "in-progress" ? 0 : 1;
+        t.status === "in-progress" ? 0 : t.status === "completed" ? 2 : 1;
       return rank(a) - rank(b);
     });
   }, [todos]);
@@ -28,10 +29,7 @@ export function TodosPanel({ sessionId }: Props) {
       : sorted.slice(0, COLLAPSE_AFTER);
 
   return (
-    <div className="border-b border-border/40 px-3 py-2">
-      <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-text-tertiary">
-        Todos
-      </div>
+    <SidebarCard title="Todos">
       <ul className="space-y-1">
         {visible.map((t, i) => (
           <li
@@ -40,15 +38,17 @@ export function TodosPanel({ sessionId }: Props) {
               "flex items-start gap-1.5 text-xs " +
               (t.status === "completed"
                 ? "text-text-tertiary line-through"
-                : "text-text-secondary")
+                : t.status === "in-progress"
+                  ? "text-accent"
+                  : "text-text-secondary")
             }
           >
-            <span className="mt-0.5 flex-shrink-0">
+            <span className="mt-0.5 flex-shrink-0 font-mono">
               {t.status === "completed"
-                ? "✓"
+                ? "[✓]"
                 : t.status === "in-progress"
-                  ? "•"
-                  : "○"}
+                  ? "[•]"
+                  : "[ ]"}
             </span>
             <span className="flex-1">{t.content}</span>
           </li>
@@ -64,6 +64,6 @@ export function TodosPanel({ sessionId }: Props) {
             : `Show all (${sorted.length - COLLAPSE_AFTER} more)`}
         </button>
       )}
-    </div>
+    </SidebarCard>
   );
 }

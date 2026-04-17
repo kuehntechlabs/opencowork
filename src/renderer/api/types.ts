@@ -216,7 +216,18 @@ export interface Model {
     reasoning?: boolean;
     toolcall?: boolean;
   };
+  limit?: {
+    context: number;
+    output: number;
+  };
 }
+
+export type MCPStatus =
+  | { status: "connected" }
+  | { status: "disabled" }
+  | { status: "failed"; error: string }
+  | { status: "needs_auth" }
+  | { status: "needs_client_registration"; error: string };
 
 export interface AgentInfo {
   name: string;

@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Message, AssistantMessage, TextPart } from "../../api/types";
 import { useSessionStore } from "../../stores/session-store";
 import { TextContent } from "./TextContent";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { ToolCallBlock } from "./ToolCallBlock";
+import { ImageLightbox } from "./ImageLightbox";
 
 interface Props {
   message: Message;
@@ -13,6 +14,10 @@ const emptyParts: never[] = [];
 
 export function MessageBubble({ message }: Props) {
   const isUser = message.role === "user";
+  const [lightbox, setLightbox] = useState<{
+    src: string;
+    alt?: string;
+  } | null>(null);
   const allParts = useSessionStore((s) => s.parts[message.id]) ?? emptyParts;
   const syntheticText = allParts.find(
     (p) => p.type === "text" && (p as TextPart).synthetic,
@@ -93,20 +98,21 @@ export function MessageBubble({ message }: Props) {
             case "file":
               if (part.mime?.startsWith("image/")) {
                 return (
-                  <a
+                  <button
                     key={part.id}
-                    href={part.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="my-1 block"
+                    type="button"
+                    onClick={() =>
+                      setLightbox({ src: part.url, alt: part.filename })
+                    }
+                    className="my-1 block rounded-md"
                     title={part.filename}
                   >
                     <img
                       src={part.url}
                       alt={part.filename || "image"}
-                      className="max-h-80 max-w-full rounded-lg border border-border/40 object-contain"
+                      className="h-24 w-24 rounded-md border border-border/40 object-cover transition-opacity hover:opacity-80"
                     />
-                  </a>
+                  </button>
                 );
               }
               return (
@@ -180,6 +186,13 @@ export function MessageBubble({ message }: Props) {
             );
           })()}
       </div>
+      {lightbox && (
+        <ImageLightbox
+          src={lightbox.src}
+          alt={lightbox.alt}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   );
 }

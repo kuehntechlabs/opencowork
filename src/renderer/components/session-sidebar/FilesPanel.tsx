@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useSessionStore } from "../../stores/session-store";
+import { SidebarCard } from "./SidebarCard";
 
 interface Props {
   sessionId: string;
 }
 
-const COLLAPSE_AFTER = 3;
+const COLLAPSE_AFTER = 4;
 
 export function FilesPanel({ sessionId }: Props) {
   const diffs = useSessionStore((s) => s.sessionDiffs[sessionId]);
@@ -18,10 +19,15 @@ export function FilesPanel({ sessionId }: Props) {
       ? diffs
       : diffs.slice(0, COLLAPSE_AFTER);
 
+  const totalAdds = diffs.reduce((s, d) => s + d.additions, 0);
+  const totalDels = diffs.reduce((s, d) => s + d.deletions, 0);
+
   return (
-    <div className="border-b border-border/40 px-3 py-2">
-      <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-text-tertiary">
-        Modified Files
+    <SidebarCard title={`Modified Files (${diffs.length})`}>
+      <div className="mb-1.5 text-[11px] text-text-tertiary">
+        <span className="text-green-500">+{totalAdds}</span>{" "}
+        <span className="text-red-500">-{totalDels}</span> across {diffs.length}{" "}
+        file{diffs.length === 1 ? "" : "s"}
       </div>
       <ul className="space-y-1">
         {visible.map((d) => {
@@ -58,6 +64,6 @@ export function FilesPanel({ sessionId }: Props) {
             : `Show all (${diffs.length - COLLAPSE_AFTER} more)`}
         </button>
       )}
-    </div>
+    </SidebarCard>
   );
 }
