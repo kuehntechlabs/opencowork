@@ -124,23 +124,37 @@ ipcMain.handle("restart-sidecar", async () => {
   return url;
 });
 
-ipcMain.handle("sync-ollama-models", async () => {
+async function syncOllamaModelsToConfig(): Promise<{
+  synced: boolean;
+  models: string[];
+  changed: boolean;
+}> {
   try {
     const res = await fetch("http://localhost:11434/api/tags");
-    if (!res.ok) return { synced: false, models: [] };
+    if (!res.ok) return { synced: false, models: [], changed: false };
     const data = (await res.json()) as {
       models?: { name: string; size: number }[];
     };
     const ollamaModels = (data.models ?? []).map((m) => m.name);
 
-    // Update the opencode config to match actual Ollama models
     const config = readOpencodeConfig();
     const providers = (config.provider ?? {}) as Record<
       string,
       Record<string, unknown>
     >;
     const ollama = providers.ollama;
-    if (ollama) {
+    if (!ollama) {
+      return { synced: true, models: ollamaModels, changed: false };
+    }
+
+    const existing = Object.keys(
+      (ollama.models ?? {}) as Record<string, unknown>,
+    ).sort();
+    const next = [...ollamaModels].sort();
+    const changed =
+      existing.length !== next.length || existing.some((n, i) => n !== next[i]);
+
+    if (changed) {
       const models: Record<string, { name: string }> = {};
       for (const name of ollamaModels) {
         models[name] = { name };
@@ -149,10 +163,15 @@ ipcMain.handle("sync-ollama-models", async () => {
       writeProviderConfig(providers);
       log.info(`Synced ${ollamaModels.length} Ollama models to config`);
     }
-    return { synced: true, models: ollamaModels };
+    return { synced: true, models: ollamaModels, changed };
   } catch {
-    return { synced: false, models: [] };
+    return { synced: false, models: [], changed: false };
   }
+}
+
+ipcMain.handle("sync-ollama-models", async () => {
+  const { synced, models } = await syncOllamaModelsToConfig();
+  return { synced, models };
 });
 
 // Skills management
@@ -570,7 +589,10 @@ if (!gotSingleInstanceLock) {
       log.error("Failed to start opencode sidecar:", err);
     }
 
+    syncOllamaModelsToConfig().catch(() => {});
+
     createWindow();
+    setupOllamaPolling();
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -582,6 +604,32 @@ if (!gotSingleInstanceLock) {
   });
 
   app.on("before-quit", async () => {
+    stopOllamaPolling();
     await stopSidecar();
   });
+}
+
+let ollamaPollTimer: NodeJS.Timeout | null = null;
+const OLLAMA_POLL_INTERVAL_MS = 30_000;
+
+function startOllamaPoll() {
+  if (ollamaPollTimer) return;
+  ollamaPollTimer = setInterval(() => {
+    syncOllamaModelsToConfig().catch(() => {});
+  }, OLLAMA_POLL_INTERVAL_MS);
+}
+
+function stopOllamaPolling() {
+  if (ollamaPollTimer) {
+    clearInterval(ollamaPollTimer);
+    ollamaPollTimer = null;
+  }
+}
+
+function setupOllamaPolling() {
+  if (!mainWindow) return;
+  if (mainWindow.isFocused()) startOllamaPoll();
+  mainWindow.on("focus", startOllamaPoll);
+  mainWindow.on("blur", stopOllamaPolling);
+  mainWindow.on("closed", stopOllamaPolling);
 }

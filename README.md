@@ -70,7 +70,7 @@ Organize work into projects with dedicated agent instructions (`agents.md`), dir
 
 ### Provider Configuration
 
-Connect your own API keys for Anthropic, OpenAI, Google, Groq, xAI, Mistral, or OpenRouter. Also supports local models via Ollama, LM Studio, and llama.cpp.
+Connect your own API keys for Anthropic, OpenAI, Google, Groq, xAI, Mistral, or OpenRouter. Also supports local models via Ollama, LM Studio, and llama.cpp. Ollama models stay in sync automatically — the app detects new pulls and removes on startup and every 30s while focused.
 
 ---
 
