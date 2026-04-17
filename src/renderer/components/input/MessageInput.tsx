@@ -79,6 +79,13 @@ export function MessageInput({
       window.dispatchEvent(new CustomEvent("opencowork:toggle-variant-picker"));
     },
     onExecuteCustomCommand: executeCustomCommand,
+    onRestorePrompt: (restored) => {
+      setText(restored);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+        textareaRef.current.focus();
+      }
+    },
   });
 
   // Determine if we're in slash mode — only the first word matters

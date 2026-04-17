@@ -154,8 +154,15 @@ export async function replyPermission(
 }
 
 // Session revert / unrevert (undo / redo)
-export async function revertSession(sessionId: string): Promise<void> {
-  await request(`/session/${sessionId}/revert`, { method: "POST" });
+export async function revertSession(
+  sessionId: string,
+  messageID: string,
+  partID?: string,
+): Promise<void> {
+  await request(`/session/${sessionId}/revert`, {
+    method: "POST",
+    body: JSON.stringify(partID ? { messageID, partID } : { messageID }),
+  });
 }
 
 export async function unrevertSession(sessionId: string): Promise<void> {

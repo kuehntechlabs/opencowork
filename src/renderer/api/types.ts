@@ -21,6 +21,12 @@ export interface Session {
     files: number;
   };
   share?: { url: string };
+  revert?: {
+    messageID: string;
+    partID?: string;
+    snapshot?: string;
+    diff?: string;
+  };
 }
 
 export interface UserMessage {

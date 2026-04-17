@@ -6,6 +6,8 @@ import { useProjectStore } from "../stores/project-store";
 import * as api from "../api/client";
 import type { CustomCommand } from "../api/client";
 
+const inFlightUndoRedo = new Set<string>();
+
 export interface SlashCommand {
   id: string;
   trigger: string;
@@ -22,6 +24,7 @@ export function useSlashCommands({
   onModelOpen,
   onVariantToggle,
   onExecuteCustomCommand,
+  onRestorePrompt,
 }: {
   onModelOpen?: () => void;
   onVariantToggle?: () => void;
@@ -29,6 +32,7 @@ export function useSlashCommands({
     command: string,
     args: string,
   ) => void | boolean | Promise<void | boolean>;
+  onRestorePrompt?: (text: string) => void;
 } = {}) {
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
   const status = useSessionStore((s) =>
@@ -73,24 +77,107 @@ export function useSlashCommands({
 
   const undo = useCallback(async () => {
     if (!activeSessionId) return false;
-    if (status?.type === "busy") {
-      await api.abortSession(activeSessionId).catch(() => {});
+    if (inFlightUndoRedo.has(activeSessionId)) return true;
+
+    const state = useSessionStore.getState();
+    const session = state.sessions[activeSessionId];
+    const msgs = state.messages[activeSessionId] ?? [];
+    const pointer = session?.revert?.messageID;
+    const target = [...msgs]
+      .reverse()
+      .find((m) => m.role === "user" && (!pointer || m.id < pointer));
+    if (!target) {
+      window.api
+        .showNotification("Nothing to undo", "No earlier user message found.")
+        .catch(() => {});
+      return false;
     }
-    await api.revertSession(activeSessionId).catch((err) => {
-      console.error("Undo failed:", err);
-    });
-    await useSessionStore.getState().loadMessages(activeSessionId);
-    return true;
-  }, [activeSessionId, status]);
+
+    inFlightUndoRedo.add(activeSessionId);
+    try {
+      if (status?.type === "busy") {
+        await api.abortSession(activeSessionId).catch(() => {});
+      }
+      try {
+        await api.revertSession(activeSessionId, target.id);
+      } catch (err) {
+        console.error("Undo failed:", err);
+        window.api
+          .showNotification(
+            "Undo failed",
+            err instanceof Error
+              ? err.message
+              : "Could not revert the session.",
+          )
+          .catch(() => {});
+        return false;
+      }
+
+      if (onRestorePrompt) {
+        const parts = state.parts[target.id] ?? [];
+        const text = parts
+          .filter(
+            (p): p is Extract<typeof p, { type: "text" }> =>
+              p.type === "text" && !(p as { synthetic?: boolean }).synthetic,
+          )
+          .map((p) => p.text)
+          .join("");
+        onRestorePrompt(text);
+      }
+
+      await useSessionStore.getState().loadMessages(activeSessionId);
+      return true;
+    } finally {
+      inFlightUndoRedo.delete(activeSessionId);
+    }
+  }, [activeSessionId, status, onRestorePrompt]);
 
   const redo = useCallback(async () => {
     if (!activeSessionId) return false;
-    await api.unrevertSession(activeSessionId).catch((err) => {
-      console.error("Redo failed:", err);
-    });
-    await useSessionStore.getState().loadMessages(activeSessionId);
-    return true;
-  }, [activeSessionId]);
+    if (inFlightUndoRedo.has(activeSessionId)) return true;
+
+    const state = useSessionStore.getState();
+    const session = state.sessions[activeSessionId];
+    const msgs = state.messages[activeSessionId] ?? [];
+    const pointer = session?.revert?.messageID;
+    if (!pointer) {
+      window.api
+        .showNotification("Nothing to redo", "No reverted messages.")
+        .catch(() => {});
+      return false;
+    }
+    const next = msgs.find((m) => m.role === "user" && m.id > pointer);
+
+    inFlightUndoRedo.add(activeSessionId);
+    try {
+      if (status?.type === "busy") {
+        await api.abortSession(activeSessionId).catch(() => {});
+      }
+      try {
+        if (next) {
+          await api.revertSession(activeSessionId, next.id);
+        } else {
+          await api.unrevertSession(activeSessionId);
+        }
+      } catch (err) {
+        console.error("Redo failed:", err);
+        window.api
+          .showNotification(
+            "Redo failed",
+            err instanceof Error
+              ? err.message
+              : "Could not unrevert the session.",
+          )
+          .catch(() => {});
+        return false;
+      }
+      onRestorePrompt?.("");
+      await useSessionStore.getState().loadMessages(activeSessionId);
+      return true;
+    } finally {
+      inFlightUndoRedo.delete(activeSessionId);
+    }
+  }, [activeSessionId, status, onRestorePrompt]);
 
   const compact = useCallback(async () => {
     if (!activeSessionId) return false;

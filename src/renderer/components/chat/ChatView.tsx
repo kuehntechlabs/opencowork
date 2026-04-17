@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "../input/MessageInput";
 import { PermissionBanner } from "./PermissionBanner";
@@ -17,6 +17,12 @@ export function ChatView({ sessionId }: Props) {
   const session = useSessionStore((s) => s.sessions[sessionId]);
   const messages =
     useSessionStore((s) => s.messages[sessionId]) ?? emptyMessages;
+  const revertPointer = session?.revert?.messageID;
+  const visibleMessages = useMemo(
+    () =>
+      revertPointer ? messages.filter((m) => m.id < revertPointer) : messages,
+    [messages, revertPointer],
+  );
   const status = useSessionStore((s) => s.sessionStatus[sessionId]);
   const sendPrompt = useSessionStore((s) => s.sendPrompt);
   const abortSession = useSessionStore((s) => s.abortSession);
@@ -76,7 +82,7 @@ export function ChatView({ sessionId }: Props) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
-        <MessageList sessionId={sessionId} messages={messages} />
+        <MessageList sessionId={sessionId} messages={visibleMessages} />
       </div>
 
       {/* Permission requests */}
