@@ -120,15 +120,23 @@ export function CustomizePage() {
       setSelectedFile(null);
       setSelectedServer(null);
     };
+    const openSkills = () => {
+      setSection("skills");
+      setSelectedServer(null);
+    };
     window.addEventListener(
       "opencowork:open-customize-connectors",
       openConnectors,
     );
+    window.addEventListener("opencowork:open-customize-skills", openSkills);
     return () =>
-      window.removeEventListener(
-        "opencowork:open-customize-connectors",
-        openConnectors,
-      );
+      {
+        window.removeEventListener(
+          "opencowork:open-customize-connectors",
+          openConnectors,
+        );
+        window.removeEventListener("opencowork:open-customize-skills", openSkills);
+      };
   }, []);
 
   // Load skills when section becomes "skills"

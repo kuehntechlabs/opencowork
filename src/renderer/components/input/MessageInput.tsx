@@ -45,8 +45,7 @@ export function MessageInput({
       const modes = ["ask", "auto-accept", "plan", "bypass"] as const;
       const currentIndex = modes.indexOf(permissionMode);
       const baseIndex = currentIndex >= 0 ? currentIndex : 0;
-      const nextIndex =
-        (baseIndex + direction + modes.length) % modes.length;
+      const nextIndex = (baseIndex + direction + modes.length) % modes.length;
       setPermissionMode(modes[nextIndex]);
     },
     [permissionMode, setPermissionMode],
@@ -77,12 +76,7 @@ export function MessageInput({
       window.dispatchEvent(new CustomEvent("opencowork:open-model-picker"));
     },
     onVariantToggle: () => {
-      window.dispatchEvent(
-        new CustomEvent("opencowork:toggle-variant-picker"),
-      );
-    },
-    onAgentCycle: () => {
-      cyclePermissionMode(1);
+      window.dispatchEvent(new CustomEvent("opencowork:toggle-variant-picker"));
     },
     onExecuteCustomCommand: executeCustomCommand,
   });

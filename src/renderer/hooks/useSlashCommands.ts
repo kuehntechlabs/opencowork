@@ -21,21 +21,19 @@ export interface SlashCommand {
 export function useSlashCommands({
   onModelOpen,
   onVariantToggle,
-  onAgentCycle,
   onExecuteCustomCommand,
 }: {
   onModelOpen?: () => void;
   onVariantToggle?: () => void;
-  onAgentCycle?: () => void;
   onExecuteCustomCommand?: (
     command: string,
     args: string,
   ) => void | boolean | Promise<void | boolean>;
 } = {}) {
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
-  const sessions = useSessionStore((s) => s.sessions);
-  const messages = useSessionStore((s) => s.messages);
-  const sessionStatus = useSessionStore((s) => s.sessionStatus);
+  const status = useSessionStore((s) =>
+    activeSessionId ? s.sessionStatus[activeSessionId] : undefined,
+  );
   const { selectedProvider, selectedModel } = useSettingsStore();
   const setRightPanelPage = useSettingsStore((s) => s.setRightPanelPage);
   const connected = useServerStore((s) => s.connected);
@@ -47,55 +45,18 @@ export function useSlashCommands({
   // Fetch custom commands (skills, MCPs) from the backend
   useEffect(() => {
     if (!connected) return;
-    api.listCommands().then(setCustomCommands).catch(() => {});
+    api
+      .listCommands()
+      .then(setCustomCommands)
+      .catch(() => {});
   }, [connected]);
-
-  const session = activeSessionId ? sessions[activeSessionId] : null;
-  const sessionMessages = activeSessionId
-    ? messages[activeSessionId] ?? []
-    : [];
-  const userMessages = sessionMessages.filter((m) => m.role === "user");
-  const status = activeSessionId
-    ? sessionStatus[activeSessionId]
-    : undefined;
-  const isBusy = status?.type === "busy";
-  const hasMessages = userMessages.length > 0;
-
-  const undo = useCallback(async () => {
-    if (!activeSessionId) return;
-    if (isBusy) {
-      await api.abortSession(activeSessionId).catch(() => {});
-    }
-    await api.revertSession(activeSessionId).catch((err) => {
-      console.error("Undo failed:", err);
-    });
-    await useSessionStore.getState().loadMessages(activeSessionId);
-  }, [activeSessionId, isBusy]);
-
-  const redo = useCallback(async () => {
-    if (!activeSessionId) return;
-    await api.unrevertSession(activeSessionId).catch((err) => {
-      console.error("Redo failed:", err);
-    });
-    await useSessionStore.getState().loadMessages(activeSessionId);
-  }, [activeSessionId]);
-
-  const compact = useCallback(async () => {
-    if (!activeSessionId) return;
-    if (!selectedProvider || !selectedModel) {
-      console.warn("No model selected for compact");
-      return;
-    }
-    await api
-      .summarizeSession(activeSessionId, selectedProvider, selectedModel)
-      .catch((err) => {
-        console.error("Compact failed:", err);
-      });
-  }, [activeSessionId, selectedProvider, selectedModel]);
 
   const notifyUnavailable = useCallback((feature: string) => {
     window.api
-      .showNotification("Not available in OpenCowork", `${feature} is not available in this UI yet.`)
+      .showNotification(
+        "Not available in OpenCowork",
+        `${feature} is not available in this UI yet.`,
+      )
       .catch(() => {});
   }, []);
 
@@ -110,44 +71,42 @@ export function useSlashCommands({
     addRecentDirectory(path);
   }, [setDirectory, addRecentDirectory]);
 
-  const fork = useCallback(async () => {
-    if (!activeSessionId) return;
-    const directory = useServerStore.getState().directory;
-    if (!directory) return;
-    try {
-      const { permissionMode } = useSettingsStore.getState();
-      const action = permissionMode === "bypass" ? "allow" : "ask";
-      const newSession = await useSessionStore
-        .getState()
-        .createSession(directory, action);
-      useSessionStore.getState().setActiveSession(newSession.id);
-    } catch (err) {
-      console.error("Fork failed:", err);
+  const undo = useCallback(async () => {
+    if (!activeSessionId) return false;
+    if (status?.type === "busy") {
+      await api.abortSession(activeSessionId).catch(() => {});
     }
-  }, [activeSessionId]);
-
-  const share = useCallback(async () => {
-    if (!activeSessionId) return;
-    if (session?.share?.url) {
-      await navigator.clipboard.writeText(session.share.url).catch(() => {});
-      return;
-    }
-    try {
-      const url = await api.shareSession(activeSessionId);
-      if (url) {
-        await navigator.clipboard.writeText(url).catch(() => {});
-      }
-    } catch (err) {
-      console.error("Share failed:", err);
-    }
-  }, [activeSessionId, session]);
-
-  const unshare = useCallback(async () => {
-    if (!activeSessionId) return;
-    await api.unshareSession(activeSessionId).catch((err) => {
-      console.error("Unshare failed:", err);
+    await api.revertSession(activeSessionId).catch((err) => {
+      console.error("Undo failed:", err);
     });
+    await useSessionStore.getState().loadMessages(activeSessionId);
+    return true;
+  }, [activeSessionId, status]);
+
+  const redo = useCallback(async () => {
+    if (!activeSessionId) return false;
+    await api.unrevertSession(activeSessionId).catch((err) => {
+      console.error("Redo failed:", err);
+    });
+    await useSessionStore.getState().loadMessages(activeSessionId);
+    return true;
   }, [activeSessionId]);
+
+  const compact = useCallback(async () => {
+    if (!activeSessionId) return false;
+    if (!selectedProvider || !selectedModel) {
+      window.api
+        .showNotification("Compact unavailable", "Select a model first")
+        .catch(() => {});
+      return true;
+    }
+    await api
+      .summarizeSession(activeSessionId, selectedProvider, selectedModel)
+      .catch((err) => {
+        console.error("Compact failed:", err);
+      });
+    return true;
+  }, [activeSessionId, selectedProvider, selectedModel]);
 
   const openModel = useCallback(() => {
     onModelOpen?.();
@@ -161,14 +120,25 @@ export function useSlashCommands({
     onVariantToggle?.();
   }, [selectedProvider, selectedModel, notifyUnavailable, onVariantToggle]);
 
-  const cycleAgent = useCallback(() => {
-    onAgentCycle?.();
-  }, [onAgentCycle]);
+  const openCustomizeSection = useCallback(
+    (section: "connectors" | "skills") => {
+      setRightPanelPage("customize");
+      window.setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent(`opencowork:open-customize-${section}`),
+        );
+      }, 0);
+    },
+    [setRightPanelPage],
+  );
 
   const openMcp = useCallback(() => {
-    setRightPanelPage("customize");
-    window.dispatchEvent(new CustomEvent("opencowork:open-customize-connectors"));
-  }, [setRightPanelPage]);
+    openCustomizeSection("connectors");
+  }, [openCustomizeSection]);
+
+  const openSkills = useCallback(() => {
+    openCustomizeSection("skills");
+  }, [openCustomizeSection]);
 
   const commands = useMemo<SlashCommand[]>(() => {
     // Custom commands from backend (skills, MCPs)
@@ -185,9 +155,7 @@ export function useSlashCommands({
             : "Custom",
       type: "custom" as const,
       source: cmd.source,
-      onSelect: (args) => {
-        return onExecuteCustomCommand?.(cmd.name, args);
-      },
+      onSelect: (args) => onExecuteCustomCommand?.(cmd.name, args),
     }));
 
     // Built-in commands
@@ -217,7 +185,7 @@ export function useSlashCommands({
         description: "Undo the last message",
         category: "Session",
         type: "builtin",
-        disabled: !activeSessionId || !hasMessages,
+        disabled: !activeSessionId,
         onSelect: undo,
       },
       {
@@ -237,69 +205,8 @@ export function useSlashCommands({
         description: "Summarize the session to reduce context size",
         category: "Session",
         type: "builtin",
-        disabled:
-          !activeSessionId ||
-          !hasMessages ||
-          !selectedProvider ||
-          !selectedModel,
+        disabled: !activeSessionId,
         onSelect: compact,
-      },
-      {
-        id: "session.fork",
-        trigger: "fork",
-        title: "Fork",
-        description: "Create a new session from the current one",
-        category: "Session",
-        type: "builtin",
-        disabled: !activeSessionId || !hasMessages,
-        onSelect: fork,
-      },
-      {
-        id: "session.share",
-        trigger: "share",
-        title: session?.share?.url ? "Copy share link" : "Share",
-        description: session?.share?.url
-          ? "Copy the share URL to clipboard"
-          : "Share this session and copy the URL",
-        category: "Session",
-        type: "builtin",
-        disabled: !activeSessionId,
-        onSelect: share,
-      },
-      {
-        id: "session.unshare",
-        trigger: "unshare",
-        title: "Unshare",
-        description: "Stop sharing this session",
-        category: "Session",
-        type: "builtin",
-        disabled: !activeSessionId || !session?.share?.url,
-        onSelect: unshare,
-      },
-      {
-        id: "session.status",
-        trigger: "status",
-        title: "Status",
-        description: "Show current session status",
-        category: "Session",
-        type: "builtin",
-        disabled: !activeSessionId,
-        onSelect: () => {
-          const s = activeSessionId
-            ? useSessionStore.getState().sessionStatus[activeSessionId]
-            : undefined;
-          const statusText = s?.type ?? "idle";
-          const msgCount = userMessages.length;
-          const info = [
-            `Status: ${statusText}`,
-            `Messages: ${msgCount}`,
-            selectedModel ? `Model: ${selectedModel}` : null,
-            selectedProvider ? `Provider: ${selectedProvider}` : null,
-          ]
-            .filter(Boolean)
-            .join(" | ");
-          console.log("[session status]", info);
-        },
       },
       {
         id: "model.choose",
@@ -323,37 +230,19 @@ export function useSlashCommands({
         id: "mcp.toggle",
         trigger: "mcp",
         title: "MCP",
-        description: "Toggle MCP servers",
+        description: "Open customize connectors",
         category: "MCP",
         type: "builtin",
         onSelect: openMcp,
       },
       {
-        id: "agent.cycle",
-        trigger: "agent",
-        title: "Agent",
-        description: "Switch to the next agent",
-        category: "Agent",
+        id: "skills.open",
+        trigger: "skills",
+        title: "Skills",
+        description: "Open customize skills",
+        category: "Skills",
         type: "builtin",
-        onSelect: cycleAgent,
-      },
-      {
-        id: "terminal.toggle",
-        trigger: "terminal",
-        title: "Terminal",
-        description: "Open terminal panel",
-        category: "View",
-        type: "builtin",
-        onSelect: () => notifyUnavailable("Terminal panel"),
-      },
-      {
-        id: "workspace.toggle",
-        trigger: "workspace",
-        title: "Workspace",
-        description: "Toggle workspace mode",
-        category: "Workspace",
-        type: "builtin",
-        onSelect: () => notifyUnavailable("Workspace mode"),
+        onSelect: openSkills,
       },
     ];
 
@@ -363,21 +252,14 @@ export function useSlashCommands({
     startNewSession,
     openDirectory,
     activeSessionId,
-    hasMessages,
-    selectedProvider,
-    selectedModel,
-    session,
     customCommands,
     undo,
     redo,
     compact,
-    fork,
-    share,
-    unshare,
     openModel,
     toggleVariant,
     openMcp,
-    cycleAgent,
+    openSkills,
     notifyUnavailable,
     onExecuteCustomCommand,
   ]);
