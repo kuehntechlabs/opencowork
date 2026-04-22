@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useProjectStore } from "../../stores/project-store";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useProjectStore, type Project } from "../../stores/project-store";
 import { useServerStore } from "../../stores/server-store";
 import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
@@ -8,6 +8,7 @@ export function ProjectsPage() {
   const projects = useProjectStore((s) => s.projects);
   const loading = useProjectStore((s) => s.loading);
   const loadProjects = useProjectStore((s) => s.loadProjects);
+  const deleteProject = useProjectStore((s) => s.deleteProject);
   const setNewProjectModalOpen = useProjectStore(
     (s) => s.setNewProjectModalOpen,
   );
@@ -18,6 +19,25 @@ export function ProjectsPage() {
   const permissionMode = useSettingsStore((s) => s.permissionMode);
 
   const [search, setSearch] = useState("");
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!projectToDelete) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteProject(projectToDelete.name);
+      setProjectToDelete(null);
+    } catch (err) {
+      setDeleteError(
+        err instanceof Error ? err.message : "Failed to delete project",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }, [projectToDelete, deleteProject]);
 
   useEffect(() => {
     loadProjects();
@@ -111,34 +131,136 @@ export function ProjectsPage() {
       ) : (
         <div className="flex flex-col">
           {filtered.map((project) => (
-            <button
+            <div
               key={project.name}
-              onClick={() => handleProjectClick(project)}
-              className="flex items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-surface-hover"
+              className="group flex items-start gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-surface-hover"
             >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                className="mt-0.5 shrink-0 text-text-tertiary"
+              <button
+                onClick={() => handleProjectClick(project)}
+                className="flex min-w-0 flex-1 items-start gap-3 text-left"
               >
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-              </svg>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-text">
-                  {project.name}
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  className="mt-0.5 shrink-0 text-text-tertiary"
+                >
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-text">
+                    {project.name}
+                  </div>
+                  <div className="mt-0.5 truncate text-xs text-text-tertiary">
+                    {project.path}
+                  </div>
                 </div>
-                <div className="mt-0.5 truncate text-xs text-text-tertiary">
-                  {project.path}
-                </div>
-              </div>
-            </button>
+              </button>
+              <button
+                onClick={() => setProjectToDelete(project)}
+                className="shrink-0 rounded-md p-1.5 text-text-tertiary opacity-0 transition-colors hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100 focus:opacity-100"
+                title="Delete project"
+                aria-label={`Delete project ${project.name}`}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6M14 11v6" />
+                  <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                </svg>
+              </button>
+            </div>
           ))}
         </div>
       )}
+
+      {projectToDelete && (
+        <DeleteProjectModal
+          project={projectToDelete}
+          deleting={deleting}
+          error={deleteError}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => {
+            if (deleting) return;
+            setProjectToDelete(null);
+            setDeleteError(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function DeleteProjectModal({
+  project,
+  deleting,
+  error,
+  onConfirm,
+  onCancel,
+}: {
+  project: Project;
+  deleting: boolean;
+  error: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onCancel}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-xl border border-border bg-surface-secondary p-6 shadow-2xl"
+      >
+        <h2 className="mb-1 text-base font-semibold text-text">
+          Delete project
+        </h2>
+        <p className="mb-4 text-xs text-text-tertiary">
+          This action cannot be undone.
+        </p>
+
+        <p className="mb-2 text-sm text-text">
+          Delete <span className="font-medium">{project.name}</span> and its
+          folder?
+        </p>
+        <div className="mb-4 rounded-md bg-surface px-3 py-2 font-mono text-xs text-text-secondary break-all">
+          {project.path}
+        </div>
+
+        {error && (
+          <p className="mb-3 text-xs text-red-400 whitespace-pre-wrap break-words">
+            {error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={deleting}
+            className="rounded-md px-4 py-1.5 text-xs text-text-secondary hover:bg-surface-hover disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting}
+            className="rounded-md border border-red-500/30 bg-red-500/10 px-4 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20 disabled:opacity-50"
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
