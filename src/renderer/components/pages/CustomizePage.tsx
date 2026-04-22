@@ -5,12 +5,24 @@ import { listSkills, type SkillInfo } from "../../api/client";
 import { restartAndReconnect } from "../../hooks/useDirectoryInstall";
 import { SkillDetailView } from "./SkillDetailView";
 import { FilePreviewView } from "./FilePreviewView";
+import { AddPluginDialog } from "./AddPluginDialog";
+import { AddMarketplaceDialog } from "./AddMarketplaceDialog";
+import {
+  PluginsList,
+  PluginDetailView,
+  MarketplacePluginDetailView,
+} from "./PluginsPanel";
+import type {
+  InstalledPlugin,
+  Marketplace,
+  MarketplacePluginInspection,
+} from "../../../preload/index";
 
 const api = (
   window as unknown as { api: import("../../../preload/index").ElectronAPI }
 ).api;
 
-type Section = "skills" | "connectors" | null;
+type Section = "skills" | "connectors" | "plugins" | null;
 
 interface MCPTool {
   name: string;
@@ -85,11 +97,29 @@ export function CustomizePage() {
   const [selectedServer, setSelectedServer] = useState<MCPServer | null>(null);
   const [connectorSearch, setConnectorSearch] = useState("");
 
+  // Plugins
+  const [plugins, setPlugins] = useState<InstalledPlugin[]>([]);
+  const [marketplaces, setMarketplaces] = useState<Marketplace[]>([]);
+  const [pluginsLoading, setPluginsLoading] = useState(false);
+  const [installingKeys, setInstallingKeys] = useState<Set<string>>(new Set());
+  const [selectedPlugin, setSelectedPlugin] = useState<InstalledPlugin | null>(
+    null,
+  );
+  const [selectedMarketplacePlugin, setSelectedMarketplacePlugin] =
+    useState<{ marketplaceName: string; pluginName: string } | null>(null);
+  const [marketplacePluginInspection, setMarketplacePluginInspection] =
+    useState<MarketplacePluginInspection | null>(null);
+  const [inspectingMarketplacePlugin, setInspectingMarketplacePlugin] =
+    useState(false);
+  const [pluginSearch, setPluginSearch] = useState("");
+
   // Add dropdown & dialogs
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [showWriteDialog, setShowWriteDialog] = useState(false);
   const [showConnectorDialog, setShowConnectorDialog] = useState(false);
+  const [showPluginDialog, setShowPluginDialog] = useState(false);
+  const [showMarketplaceDialog, setShowMarketplaceDialog] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
   // Close add menu on outside click
@@ -178,6 +208,131 @@ export function CustomizePage() {
       });
   }, [section]);
 
+  // Load plugins + marketplaces when section becomes "plugins"
+  useEffect(() => {
+    if (section !== "plugins") return;
+    setPluginsLoading(true);
+    Promise.all([api.listInstalledPlugins(), api.listMarketplaces()])
+      .then(([p, m]) => {
+        setPlugins(p);
+        setMarketplaces(m);
+      })
+      .catch(() => {
+        setPlugins([]);
+        setMarketplaces([]);
+      })
+      .finally(() => setPluginsLoading(false));
+  }, [section]);
+
+  const refreshPlugins = useCallback(() => {
+    setPluginsLoading(true);
+    Promise.all([api.listInstalledPlugins(), api.listMarketplaces()])
+      .then(([p, m]) => {
+        setPlugins(p);
+        setMarketplaces(m);
+      })
+      .catch(() => {
+        setPlugins([]);
+        setMarketplaces([]);
+      })
+      .finally(() => setPluginsLoading(false));
+  }, []);
+
+  const handleRemovePlugin = useCallback(async (name: string) => {
+    const result = await api.removePlugin(name);
+    if (result.ok) {
+      useServerStore.getState().setNeedsRestart(true);
+      setPlugins((prev) => prev.filter((p) => p.name !== name));
+      setSelectedPlugin(null);
+    } else {
+      console.error("Plugin remove failed:", result.error);
+    }
+  }, []);
+
+  const handleSelectMarketplacePlugin = useCallback(
+    async (marketplaceName: string, pluginName: string) => {
+      setSelectedPlugin(null);
+      setSelectedMarketplacePlugin({ marketplaceName, pluginName });
+      setMarketplacePluginInspection(null);
+      setInspectingMarketplacePlugin(true);
+      try {
+        const result = await api.inspectMarketplacePlugin(
+          marketplaceName,
+          pluginName,
+        );
+        if ("entry" in result) {
+          setMarketplacePluginInspection(result);
+        } else {
+          console.error("Inspect failed:", result.error);
+        }
+      } finally {
+        setInspectingMarketplacePlugin(false);
+      }
+    },
+    [],
+  );
+
+  const handleSelectInstalledPlugin = useCallback((plugin: InstalledPlugin) => {
+    setSelectedMarketplacePlugin(null);
+    setMarketplacePluginInspection(null);
+    setSelectedPlugin(plugin);
+  }, []);
+
+  const handleInstallMarketplacePlugin = useCallback(
+    async (marketplaceName: string, pluginName: string) => {
+      const key = `${marketplaceName}/${pluginName}`;
+      setInstallingKeys((prev) => new Set(prev).add(key));
+      try {
+        const result = await api.installMarketplacePlugin(
+          marketplaceName,
+          pluginName,
+        );
+        if (result.ok) {
+          useServerStore.getState().setNeedsRestart(true);
+          setPlugins((prev) => [
+            result.plugin,
+            ...prev.filter((p) => p.name !== result.plugin.name),
+          ]);
+        } else {
+          console.error("Install failed:", result.error);
+          window.api
+            .showNotification("Install failed", result.error)
+            .catch(() => {});
+        }
+      } finally {
+        setInstallingKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [],
+  );
+
+  const handleRemoveMarketplace = useCallback(async (name: string) => {
+    const result = await api.removeMarketplace(name);
+    if (result.ok) {
+      setMarketplaces((prev) => prev.filter((m) => m.name !== name));
+    } else {
+      console.error("Remove marketplace failed:", result.error);
+    }
+  }, []);
+
+  const handleRefreshMarketplace = useCallback(async (name: string) => {
+    const result = await api.refreshMarketplace(name);
+    if (result.ok) {
+      setMarketplaces((prev) =>
+        prev.map((m) => (m.name === name ? result.marketplace : m)),
+      );
+    } else {
+      console.error("Refresh marketplace failed:", result.error);
+      setMarketplaces((prev) =>
+        prev.map((m) => (m.name === name ? { ...m, error: result.error } : m)),
+      );
+    }
+  }, []);
+
   const handleRefreshMCP = useCallback(() => {
     setMcpLoading(true);
     api
@@ -253,6 +408,9 @@ export function CustomizePage() {
     setSelectedFile(null);
     setExpandedDirs(new Set());
     setSelectedServer(null);
+    setSelectedPlugin(null);
+    setSelectedMarketplacePlugin(null);
+    setMarketplacePluginInspection(null);
   }, []);
 
   const refreshSkills = useCallback(() => {
@@ -389,7 +547,9 @@ export function CustomizePage() {
                 ? "Skills"
                 : section === "connectors"
                   ? "Connectors"
-                  : "Customize"}
+                  : section === "plugins"
+                    ? "Plugins"
+                    : "Customize"}
             </span>
             <div className="flex-1" />
             <div className="relative" ref={addMenuRef}>
@@ -484,7 +644,7 @@ export function CustomizePage() {
                   )}
 
                   {/* Connector option — shown on Customize or Connectors */}
-                  {section !== "skills" && (
+                  {section !== "skills" && section !== "plugins" && (
                     <button
                       onClick={() => {
                         setAddMenuOpen(false);
@@ -505,6 +665,53 @@ export function CustomizePage() {
                       </svg>
                       Add MCP server
                     </button>
+                  )}
+
+                  {/* Plugin options — shown on Customize or Plugins */}
+                  {section !== "skills" && section !== "connectors" && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setAddMenuOpen(false);
+                          setShowMarketplaceDialog(true);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text hover:bg-surface-hover"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        >
+                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                          <polyline points="9 22 9 12 15 12 15 22" />
+                        </svg>
+                        Add marketplace
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAddMenuOpen(false);
+                          setShowPluginDialog(true);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text hover:bg-surface-hover"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        >
+                          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                          <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                          <line x1="12" y1="22.08" x2="12" y2="12" />
+                        </svg>
+                        Install plugin directly
+                      </button>
+                    </>
                   )}
                 </div>
               )}
@@ -552,6 +759,24 @@ export function CustomizePage() {
                     label="Connectors"
                     onClick={() => setSection("connectors")}
                   />
+                  <MenuButton
+                    icon={
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                        <line x1="12" y1="22.08" x2="12" y2="12" />
+                      </svg>
+                    }
+                    label="Plugins"
+                    onClick={() => setSection("plugins")}
+                  />
                 </div>
               </div>
             )}
@@ -587,6 +812,28 @@ export function CustomizePage() {
                 onAdd={() => openDirectory("connectors")}
               />
             )}
+
+            {section === "plugins" && (
+              <PluginsList
+                installedPlugins={plugins}
+                marketplaces={marketplaces}
+                loading={pluginsLoading}
+                installingKeys={installingKeys}
+                search={pluginSearch}
+                onSearchChange={setPluginSearch}
+                selectedPlugin={selectedPlugin}
+                onSelectPlugin={handleSelectInstalledPlugin}
+                selectedMarketplacePluginKey={
+                  selectedMarketplacePlugin
+                    ? `${selectedMarketplacePlugin.marketplaceName}/${selectedMarketplacePlugin.pluginName}`
+                    : null
+                }
+                onSelectMarketplacePlugin={handleSelectMarketplacePlugin}
+                onInstallMarketplacePlugin={handleInstallMarketplacePlugin}
+                onRemoveMarketplace={handleRemoveMarketplace}
+                onRefreshMarketplace={handleRefreshMarketplace}
+              />
+            )}
           </div>
         </div>
 
@@ -613,6 +860,34 @@ export function CustomizePage() {
                 introspecting={mcpIntrospecting}
                 onBack={() => setSelectedServer(null)}
                 onRemove={handleRemoveConnector}
+              />
+            ) : selectedPlugin ? (
+              <PluginDetailView
+                plugin={selectedPlugin}
+                onBack={() => setSelectedPlugin(null)}
+                onRemove={handleRemovePlugin}
+              />
+            ) : selectedMarketplacePlugin ? (
+              <MarketplacePluginDetailView
+                marketplaceName={selectedMarketplacePlugin.marketplaceName}
+                inspection={marketplacePluginInspection}
+                loading={inspectingMarketplacePlugin}
+                installed={plugins.some(
+                  (p) => p.name === selectedMarketplacePlugin.pluginName,
+                )}
+                installing={installingKeys.has(
+                  `${selectedMarketplacePlugin.marketplaceName}/${selectedMarketplacePlugin.pluginName}`,
+                )}
+                onBack={() => {
+                  setSelectedMarketplacePlugin(null);
+                  setMarketplacePluginInspection(null);
+                }}
+                onInstall={() => {
+                  handleInstallMarketplacePlugin(
+                    selectedMarketplacePlugin.marketplaceName,
+                    selectedMarketplacePlugin.pluginName,
+                  );
+                }}
               />
             ) : (
               <div className="flex h-full items-center justify-center">
@@ -658,6 +933,35 @@ export function CustomizePage() {
           onSuccess={() => {
             setShowConnectorDialog(false);
             useServerStore.getState().setNeedsRestart(true);
+          }}
+        />
+      )}
+
+      {/* Install Plugin Dialog (direct install) */}
+      {showPluginDialog && (
+        <AddPluginDialog
+          onClose={() => setShowPluginDialog(false)}
+          onSuccess={(plugin) => {
+            setShowPluginDialog(false);
+            useServerStore.getState().setNeedsRestart(true);
+            refreshPlugins();
+            setSection("plugins");
+            setSelectedPlugin(plugin);
+          }}
+        />
+      )}
+
+      {/* Add Marketplace Dialog */}
+      {showMarketplaceDialog && (
+        <AddMarketplaceDialog
+          onClose={() => setShowMarketplaceDialog(false)}
+          onSuccess={(marketplace) => {
+            setShowMarketplaceDialog(false);
+            setMarketplaces((prev) => [
+              ...prev.filter((m) => m.name !== marketplace.name),
+              marketplace,
+            ]);
+            setSection("plugins");
           }}
         />
       )}

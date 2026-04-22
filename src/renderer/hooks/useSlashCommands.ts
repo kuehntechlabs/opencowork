@@ -228,22 +228,29 @@ export function useSlashCommands({
   }, [openCustomizeSection]);
 
   const commands = useMemo<SlashCommand[]>(() => {
-    // Custom commands from backend (skills, MCPs)
-    const custom: SlashCommand[] = customCommands.map((cmd) => ({
-      id: `custom.${cmd.name}`,
-      trigger: cmd.name,
-      title: cmd.name,
-      description: cmd.description,
-      category:
-        cmd.source === "skill"
+    // Custom commands from backend (skills, MCPs).
+    // Plugin-contributed skills are namespaced `<plugin>__<skill>` when mirrored
+    // by the Customize → Plugins flow — group those under a "Plugin" category.
+    const custom: SlashCommand[] = customCommands.map((cmd) => {
+      const isPluginSkill = cmd.source === "skill" && cmd.name.includes("__");
+      const category = isPluginSkill
+        ? "Plugin"
+        : cmd.source === "skill"
           ? "Skill"
           : cmd.source === "mcp"
             ? "MCP"
-            : "Custom",
-      type: "custom" as const,
-      source: cmd.source,
-      onSelect: (args) => onExecuteCustomCommand?.(cmd.name, args),
-    }));
+            : "Custom";
+      return {
+        id: `custom.${cmd.name}`,
+        trigger: cmd.name,
+        title: cmd.name,
+        description: cmd.description,
+        category,
+        type: "custom" as const,
+        source: cmd.source,
+        onSelect: (args) => onExecuteCustomCommand?.(cmd.name, args),
+      };
+    });
 
     // Built-in commands
     const builtin: SlashCommand[] = [

@@ -38,6 +38,21 @@ import {
   clearMCPCache,
 } from "./mcp-inspect";
 import { createMenu } from "./menu";
+import {
+  installPluginFromSource,
+  listInstalledPlugins,
+  removePlugin,
+  type PluginSource,
+} from "./plugins";
+import {
+  addMarketplace,
+  listMarketplaces,
+  removeMarketplace,
+  refreshMarketplace,
+  installMarketplacePlugin,
+  inspectMarketplacePlugin,
+  type MarketplaceSource,
+} from "./marketplaces";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -383,6 +398,66 @@ ipcMain.handle("pick-skill-file", async () => {
   if (result.canceled || result.filePaths.length === 0) return null;
   return result.filePaths[0];
 });
+
+// Plugin management
+ipcMain.handle(
+  "install-plugin",
+  async (_event, source: PluginSource, opts?: { overwrite?: boolean }) => {
+    return installPluginFromSource(source, opts ?? {});
+  },
+);
+
+ipcMain.handle("list-installed-plugins", () => {
+  return listInstalledPlugins();
+});
+
+ipcMain.handle("remove-plugin", (_event, name: string) => {
+  return removePlugin(name);
+});
+
+ipcMain.handle("pick-plugin-folder", async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Select Plugin Folder",
+    properties: ["openDirectory"],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
+// Marketplaces
+ipcMain.handle(
+  "add-marketplace",
+  async (_event, source: MarketplaceSource) => {
+    return addMarketplace(source);
+  },
+);
+
+ipcMain.handle("list-marketplaces", () => {
+  return listMarketplaces();
+});
+
+ipcMain.handle("remove-marketplace", (_event, name: string) => {
+  return removeMarketplace(name);
+});
+
+ipcMain.handle("refresh-marketplace", async (_event, name: string) => {
+  return refreshMarketplace(name);
+});
+
+ipcMain.handle(
+  "install-marketplace-plugin",
+  async (_event, marketplaceName: string, pluginName: string) => {
+    return installMarketplacePlugin(marketplaceName, pluginName);
+  },
+);
+
+ipcMain.handle(
+  "inspect-marketplace-plugin",
+  (_event, marketplaceName: string, pluginName: string) => {
+    return inspectMarketplacePlugin(marketplaceName, pluginName);
+  },
+);
 
 // Open native file picker for chat attachments — returns files as base64 data URLs
 const ATTACHMENT_MIME_BY_EXT: Record<string, string> = {
