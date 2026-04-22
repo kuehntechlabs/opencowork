@@ -633,10 +633,18 @@ ipcMain.handle("open-file-picker", async () => {
 });
 
 ipcMain.handle("get-recent-directories", () => {
-  return appStore.get("recentDirectories", []) as {
+  const stored = appStore.get("recentDirectories", []) as {
     path: string;
     lastUsed: number;
   }[];
+  const fresh = stored.filter(
+    (r) => typeof r.path === "string" && r.path.length > 0 && existsSync(r.path),
+  );
+  // Persist the pruned list so the stale entries stop coming back.
+  if (fresh.length !== stored.length) {
+    appStore.set("recentDirectories", fresh);
+  }
+  return fresh;
 });
 
 ipcMain.handle("add-recent-directory", (_event, dirPath: string) => {
