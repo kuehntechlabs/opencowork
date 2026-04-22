@@ -82,6 +82,43 @@ export async function deleteSession(id: string): Promise<void> {
   await request(`/session/${id}`, { method: "DELETE" });
 }
 
+/** List sessions scoped to a specific directory without changing the global scope. */
+export async function listSessionsForDirectory(
+  directory: string,
+): Promise<Session[]> {
+  if (!baseUrl) throw new Error("Server not connected");
+  const res = await fetch(`${baseUrl}/session`, {
+    headers: {
+      "Content-Type": "application/json",
+      "x-opencode-directory": directory,
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`API error ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
+/** Delete a session while passing an explicit directory header. */
+export async function deleteSessionInDirectory(
+  id: string,
+  directory: string,
+): Promise<void> {
+  if (!baseUrl) throw new Error("Server not connected");
+  const res = await fetch(`${baseUrl}/session/${id}`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      "x-opencode-directory": directory,
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`API error ${res.status}: ${text}`);
+  }
+}
+
 export async function updateSession(
   id: string,
   updates: { title?: string; time?: { archived?: number } },

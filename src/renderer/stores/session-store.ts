@@ -45,6 +45,7 @@ interface SessionState {
     permissionAction?: "allow" | "ask",
   ) => Promise<Session>;
   deleteSession: (id: string) => Promise<void>;
+  deleteSessionsForDirectory: (directory: string) => Promise<number>;
   archiveSession: (id: string) => Promise<void>;
   unarchiveSession: (id: string) => Promise<void>;
   sendPrompt: (
@@ -183,6 +184,46 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
       };
     });
+  },
+
+  /**
+   * Delete every session the sidecar has bound to `directory`. Returns how many
+   * sessions were removed. Best-effort: if the sidecar is unreachable we skip
+   * silently so that project deletion can still proceed.
+   */
+  deleteSessionsForDirectory: async (directory) => {
+    let sessions: Session[] = [];
+    try {
+      sessions = await api.listSessionsForDirectory(directory);
+    } catch {
+      return 0;
+    }
+    const deletedIds: string[] = [];
+    for (const s of sessions) {
+      try {
+        await api.deleteSessionInDirectory(s.id, directory);
+        deletedIds.push(s.id);
+      } catch {
+        // best-effort: skip failures and continue
+      }
+    }
+    if (deletedIds.length > 0) {
+      const deletedSet = new Set(deletedIds);
+      set((state) => {
+        const nextSessions: Record<string, Session> = {};
+        for (const [id, sess] of Object.entries(state.sessions)) {
+          if (!deletedSet.has(id)) nextSessions[id] = sess;
+        }
+        return {
+          sessions: nextSessions,
+          activeSessionId:
+            state.activeSessionId && deletedSet.has(state.activeSessionId)
+              ? null
+              : state.activeSessionId,
+        };
+      });
+    }
+    return deletedIds.length;
   },
 
   archiveSession: async (id) => {

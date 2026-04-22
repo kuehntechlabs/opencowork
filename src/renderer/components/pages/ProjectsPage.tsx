@@ -28,6 +28,10 @@ export function ProjectsPage() {
     setDeleting(true);
     setDeleteError(null);
     try {
+      // Wipe sessions bound to this directory first so the sidebar updates.
+      await useSessionStore
+        .getState()
+        .deleteSessionsForDirectory(projectToDelete.path);
       await deleteProject(projectToDelete.name);
       setProjectToDelete(null);
     } catch (err) {
