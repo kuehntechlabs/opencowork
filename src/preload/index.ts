@@ -307,6 +307,9 @@ const api = {
   pickPluginFolder: (): Promise<string | null> =>
     ipcRenderer.invoke("pick-plugin-folder"),
 
+  pathExists: (path: string): Promise<boolean> =>
+    ipcRenderer.invoke("path-exists", path),
+
   // Marketplaces
   addMarketplace: (
     source: MarketplaceSourceDescriptor,

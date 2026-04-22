@@ -46,6 +46,10 @@ interface SessionState {
   ) => Promise<Session>;
   deleteSession: (id: string) => Promise<void>;
   deleteSessionsForDirectory: (directory: string) => Promise<number>;
+  findOrphanSessions: () => Promise<
+    { directory: string; sessionIds: string[]; titles: string[] }[]
+  >;
+  cleanupOrphanSessions: () => Promise<number>;
   archiveSession: (id: string) => Promise<void>;
   unarchiveSession: (id: string) => Promise<void>;
   sendPrompt: (
@@ -224,6 +228,52 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       });
     }
     return deletedIds.length;
+  },
+
+  /**
+   * Scan the locally-cached sessions for directories that no longer exist on
+   * disk. Returns one entry per orphaned directory with the session IDs bound
+   * to it so a confirm-before-delete UI can preview what will go away.
+   */
+  findOrphanSessions: async () => {
+    const state = get();
+    const byDir = new Map<string, { ids: string[]; titles: string[] }>();
+    for (const s of Object.values(state.sessions)) {
+      if (!s.directory) continue;
+      const entry = byDir.get(s.directory) ?? { ids: [], titles: [] };
+      entry.ids.push(s.id);
+      entry.titles.push(s.title || s.id);
+      byDir.set(s.directory, entry);
+    }
+    const orphans: {
+      directory: string;
+      sessionIds: string[];
+      titles: string[];
+    }[] = [];
+    for (const [dir, entry] of byDir.entries()) {
+      const exists = await window.api.pathExists(dir).catch(() => false);
+      if (!exists) {
+        orphans.push({
+          directory: dir,
+          sessionIds: entry.ids,
+          titles: entry.titles,
+        });
+      }
+    }
+    return orphans;
+  },
+
+  /**
+   * Delete every session whose directory no longer exists on disk. Returns the
+   * total number of sessions removed.
+   */
+  cleanupOrphanSessions: async () => {
+    const orphans = await get().findOrphanSessions();
+    let total = 0;
+    for (const o of orphans) {
+      total += await get().deleteSessionsForDirectory(o.directory);
+    }
+    return total;
   },
 
   archiveSession: async (id) => {

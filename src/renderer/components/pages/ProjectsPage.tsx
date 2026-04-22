@@ -22,6 +22,38 @@ export function ProjectsPage() {
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [orphans, setOrphans] = useState<
+    { directory: string; sessionIds: string[]; titles: string[] }[]
+  >([]);
+  const [showOrphanModal, setShowOrphanModal] = useState(false);
+  const [cleaningOrphans, setCleaningOrphans] = useState(false);
+  const [orphanError, setOrphanError] = useState<string | null>(null);
+
+  const scanOrphans = useCallback(async () => {
+    const found = await useSessionStore.getState().findOrphanSessions();
+    setOrphans(found);
+  }, []);
+
+  const handleOpenOrphanModal = useCallback(async () => {
+    await scanOrphans();
+    setShowOrphanModal(true);
+  }, [scanOrphans]);
+
+  const handleConfirmCleanup = useCallback(async () => {
+    setCleaningOrphans(true);
+    setOrphanError(null);
+    try {
+      await useSessionStore.getState().cleanupOrphanSessions();
+      await scanOrphans();
+      setShowOrphanModal(false);
+    } catch (err) {
+      setOrphanError(
+        err instanceof Error ? err.message : "Cleanup failed",
+      );
+    } finally {
+      setCleaningOrphans(false);
+    }
+  }, [scanOrphans]);
 
   const handleConfirmDelete = useCallback(async () => {
     if (!projectToDelete) return;
@@ -46,6 +78,15 @@ export function ProjectsPage() {
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  // Sessions load async; rescan whenever their count changes so the
+  // "Clean up" button appears as soon as we can detect orphans.
+  const sessionCount = useSessionStore(
+    (s) => Object.keys(s.sessions).length,
+  );
+  useEffect(() => {
+    scanOrphans();
+  }, [sessionCount, scanOrphans]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return projects;
@@ -80,22 +121,48 @@ export function ProjectsPage() {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-text">Projects</h1>
-        <button
-          onClick={handleNewProject}
-          className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition-colors hover:bg-surface-hover"
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
+        <div className="flex items-center gap-2">
+          {orphans.length > 0 && (
+            <button
+              onClick={handleOpenOrphanModal}
+              className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/20"
+              title="Clean up chats whose folder no longer exists"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              </svg>
+              Clean up {orphans.reduce((n, o) => n + o.sessionIds.length, 0)}{" "}
+              orphan chat
+              {orphans.reduce((n, o) => n + o.sessionIds.length, 0) !== 1
+                ? "s"
+                : ""}
+            </button>
+          )}
+          <button
+            onClick={handleNewProject}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition-colors hover:bg-surface-hover"
           >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          New project
-        </button>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New project
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -201,6 +268,110 @@ export function ProjectsPage() {
           }}
         />
       )}
+
+      {showOrphanModal && (
+        <OrphanCleanupModal
+          orphans={orphans}
+          cleaning={cleaningOrphans}
+          error={orphanError}
+          onConfirm={handleConfirmCleanup}
+          onCancel={() => {
+            if (cleaningOrphans) return;
+            setShowOrphanModal(false);
+            setOrphanError(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function OrphanCleanupModal({
+  orphans,
+  cleaning,
+  error,
+  onConfirm,
+  onCancel,
+}: {
+  orphans: { directory: string; sessionIds: string[]; titles: string[] }[];
+  cleaning: boolean;
+  error: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const totalSessions = orphans.reduce(
+    (n, o) => n + o.sessionIds.length,
+    0,
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onCancel}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex w-full max-w-lg flex-col rounded-xl border border-border bg-surface-secondary p-6 shadow-2xl"
+      >
+        <h2 className="mb-1 text-base font-semibold text-text">
+          Clean up orphan chats
+        </h2>
+        <p className="mb-4 text-xs text-text-tertiary">
+          These chats belong to folders that no longer exist on disk.
+        </p>
+
+        {orphans.length === 0 ? (
+          <p className="mb-4 text-sm text-text">
+            No orphan chats found — your chat history is clean.
+          </p>
+        ) : (
+          <div className="mb-4 max-h-[320px] overflow-y-auto rounded-md border border-border bg-surface">
+            <ul className="divide-y divide-border">
+              {orphans.map((o) => (
+                <li key={o.directory} className="px-3 py-2">
+                  <div className="mb-1 font-mono text-[11px] text-text-secondary break-all">
+                    {o.directory}
+                  </div>
+                  <div className="text-[11px] text-text-tertiary">
+                    {o.sessionIds.length} chat
+                    {o.sessionIds.length !== 1 ? "s" : ""}
+                    {o.titles.length > 0 && (
+                      <>: {o.titles.slice(0, 3).join(", ")}
+                      {o.titles.length > 3 && `, +${o.titles.length - 3} more`}
+                      </>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {error && (
+          <p className="mb-3 text-xs text-red-400 whitespace-pre-wrap break-words">
+            {error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={cleaning}
+            className="rounded-md px-4 py-1.5 text-xs text-text-secondary hover:bg-surface-hover disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={cleaning || orphans.length === 0}
+            className="rounded-md border border-red-500/30 bg-red-500/10 px-4 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20 disabled:opacity-50"
+          >
+            {cleaning
+              ? "Cleaning…"
+              : `Delete ${totalSessions} chat${totalSessions !== 1 ? "s" : ""}`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

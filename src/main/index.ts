@@ -415,6 +415,14 @@ ipcMain.handle("remove-plugin", (_event, name: string) => {
   return removePlugin(name);
 });
 
+ipcMain.handle("path-exists", (_event, path: string) => {
+  try {
+    return typeof path === "string" && path.length > 0 && existsSync(path);
+  } catch {
+    return false;
+  }
+});
+
 ipcMain.handle("pick-plugin-folder", async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
