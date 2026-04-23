@@ -71,9 +71,10 @@ export function useArtifactDetector(sessionId: string) {
                   artifactIdMap.current.set(partial.identifier, existing.id);
                   store.updateArtifactContent(existing.id, partial.content);
                   if (partial.complete && existing.loading) {
+                    // Loading → done transition: reveal it. After this, never
+                    // auto-reopen — the user may have closed the panel.
                     store.setArtifactLoading(existing.id, false);
                   }
-                  store.setActiveArtifact(existing.id);
                 } else {
                   const id = store.addArtifact({
                     type: partial.type,
@@ -82,6 +83,7 @@ export function useArtifactDetector(sessionId: string) {
                     language: partial.type === "react" ? "tsx" : "html",
                     sessionId,
                     loading: !partial.complete,
+                    createdByMessageId: msg.id,
                   });
                   artifactIdMap.current.set(partial.identifier, id);
                 }
@@ -130,6 +132,7 @@ export function useArtifactDetector(sessionId: string) {
                   content: latestBlock.content,
                   language: latestBlock.language,
                   sessionId,
+                  createdByMessageId: msg.id,
                 });
               }, 500);
             }
@@ -154,6 +157,7 @@ export function useArtifactDetector(sessionId: string) {
                     content: tag.content,
                     language: tag.type === "react" ? "tsx" : "html",
                     sessionId,
+                    createdByMessageId: msg.id,
                   });
                 }
               }
@@ -178,6 +182,7 @@ export function useArtifactDetector(sessionId: string) {
                   title: url,
                   url,
                   sessionId,
+                  createdByMessageId: msg.id,
                 });
               }
 
@@ -193,6 +198,7 @@ export function useArtifactDetector(sessionId: string) {
                   title: filePath.split("/").pop() ?? "notebook.ipynb",
                   filePath,
                   sessionId,
+                  createdByMessageId: msg.id,
                 });
               }
             }

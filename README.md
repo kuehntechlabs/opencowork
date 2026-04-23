@@ -5,229 +5,185 @@
 <h1 align="center">OpenCowork</h1>
 
 <p align="center">
-  A desktop UI for <a href="https://github.com/nicholasgriffintn/opencode">OpenCode</a> — the open-source AI coding agent.<br/>
-  Built with Electron, React 19, and Tailwind CSS 4.
+  Your team's AI copilot for everyday work — a friendly desktop app that sits next to you and helps get things done.<br/>
+  Built for non-technical staff. No coding required.
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> &middot;
-  <a href="#installation">Installation</a> &middot;
-  <a href="#development">Development</a> &middot;
-  <a href="#architecture">Architecture</a> &middot;
-  <a href="#contributing">Contributing</a> &middot;
-  <a href="#license">License</a>
+  <a href="#what-you-can-do">What you can do</a> &middot;
+  <a href="#install-it">Install it</a> &middot;
+  <a href="#first-launch">First launch</a> &middot;
+  <a href="#daily-use-tips">Daily use tips</a> &middot;
+  <a href="#your-data">Your data</a> &middot;
+  <a href="#for-it-and-developers">For IT & developers</a>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/welcome_screen.png" alt="OpenCowork Welcome Screen" width="800" />
+  <img src="docs/screenshots/welcome_screen.png" alt="OpenCowork welcome screen" width="800" />
 </p>
 
 ---
 
-## Features
+## What you can do
 
-### Sidebar & Navigation
+OpenCowork is a desktop app that gives you an AI teammate you can chat with like a colleague. It helps you draft, research, organise, and produce polished material — from a quick email reply to a one-page brief — without leaving the app.
 
-Collapsible sidebar with quick-access icons for creating new chats, browsing projects, and customizing your agent. When collapsed, a slim icon strip keeps navigation accessible. A full-width title bar ensures clean integration with macOS window controls.
+### Chat that feels like a conversation
 
-### Chat Interface
-
-Real-time conversational UI for interacting with AI coding agents. Messages stream in via Server-Sent Events with full Markdown rendering, syntax-highlighted code blocks, and tool call visualization. The send button doubles as an inline stop control during generation.
+Ask anything in plain language. Replies stream in as the assistant thinks, with clean formatting for lists, tables, and quotes. A single button starts and stops each turn, so you're always in control.
 
 ![Chat Interface](docs/screenshots/chat.gif)
 
-### Live Artifacts
+### Instant materials, side-by-side
 
-The AI can generate interactive artifacts that render in a draggable split view alongside the chat. Drag the divider left or right to resize either panel. The sidebar auto-collapses when the viewport is too narrow to fit both panels.
+Ask for a flyer, a one-pager, a summary table, a small web form, or a quick chart — and the assistant builds it live in a panel next to your chat. Drag the divider to resize either side. Keep iterating in plain language ("make the header bigger", "use our blue", "add a signature line") until it's right.
 
-| Type | Description |
-|------|-------------|
-| **HTML** | Full HTML pages rendered in a sandboxed iframe with Tailwind CSS |
-| **React** | JSX/TSX components transpiled on-the-fly with React 19 runtime |
-| **SVG** | Scalable vector graphics |
-| **Browser Preview** | Embedded webview for localhost dev servers |
-| **Jupyter Notebooks** | Parsed and rendered `.ipynb` files with outputs |
+Common things people create:
 
-Artifacts are auto-detected from streaming responses. A fallback detector also catches code blocks and localhost URLs from tool output.
+| Example | What it produces |
+|---|---|
+| "Draft a tidy one-pager for this property" | A ready-to-print HTML page |
+| "Turn this into a simple interactive checklist" | A working mini web component |
+| "Sketch this workflow as a diagram" | A clean SVG you can export |
+| "Preview our staging site" | An embedded browser window |
+| "Walk me through this notebook" | A rendered `.ipynb` with outputs |
 
 ![Artifacts](docs/screenshots/artifacts.png)
 
-### MCP Marketplace
+### Connect your tools
 
-Browse and install [MCP servers](https://modelcontextprotocol.io/) from the official registry. Supports local (stdio) and remote (HTTP/SSE) transports with live introspection of tools, prompts, and resources.
+OpenCowork can plug into the services your team already uses — calendars, CRMs, document stores, chat tools, and more — through an open standard called MCP. Browse the built-in catalogue, pick what you need, and the assistant can read, search, and act in those tools on your behalf.
 
-![MCP Marketplace](docs/screenshots/mcp.png)
+![Tool marketplace](docs/screenshots/mcp.png)
 
-### Skills & Customization
+### Ready-made playbooks ("Skills")
 
-Discover, install, and manage AI skills. Customize your agent's behavior with custom instructions and skill configurations.
+Skills are small, reusable instructions that teach the assistant how to handle a recurring task the way *your team* likes it done — writing client updates in your tone of voice, turning meeting notes into a decision log, producing a weekly report from a set of links. Install one from the catalogue, upload a file from a colleague, or write a new one right inside the app.
 
-![Skill Marketplace](docs/screenshots/skills.png)
+![Skill marketplace](docs/screenshots/skills.png)
 
-### Projects
+### Drag, drop, paste
 
-Organize work into projects with dedicated agent instructions (`agents.md`), directory management, and session history.
+Paste a screenshot straight from your clipboard. Drag a PDF or image from Finder or File Explorer into the chat. Attach documents from the paperclip button. Images appear as thumbnails you can click to view full size.
 
-### Provider Configuration
+### The assistant asks, you answer
 
-Connect your own API keys for Anthropic, OpenAI, Google, Groq, xAI, Mistral, or OpenRouter. Also supports local models via Ollama, LM Studio, and llama.cpp.
+When the assistant needs a decision — "which of these three drafts should I continue with?" — it shows an inline picker right in the chat with radio buttons, checkboxes, or a free-text field. Pick an option and it continues from where it left off.
+
+### A live view of the current task
+
+A side panel keeps you oriented at a glance:
+
+- How much of the conversation window you've used
+- Running cost for the session
+- The assistant's live to-do list as it works
+- Files it has changed, with add / delete counts
+- Which external tools are connected
+- The folder this session is working in — click to open it in Finder / File Explorer
+
+### Organise by project
+
+Group related work into **Projects**. Each project has its own folder, its own session history, and its own written instructions so the assistant behaves consistently — for example, always use our house style, always check the brand guide first, always sign off with this signature.
+
+### Bring your own model
+
+Plug in your own keys for the major providers (Anthropic, OpenAI, Google, Groq, xAI, Mistral, OpenRouter) or run everything locally with Ollama, LM Studio, or llama.cpp. If you use Ollama, the list of available models stays in sync automatically.
 
 ---
 
-## Installation
+## Install it
 
-### Download
-
-Download the latest release for your platform:
+Download the right file for your laptop, then open it:
 
 | Platform | Download |
 |----------|----------|
-| **macOS** (Apple Silicon) | [OpenCowork-macOS.dmg](https://github.com/kuehntechlabs/opencowork/releases/latest/download/OpenCowork-macOS.dmg) |
+| **macOS** (Apple Silicon — M1/M2/M3/M4) | [OpenCowork-macOS.dmg](https://github.com/kuehntechlabs/opencowork/releases/latest/download/OpenCowork-macOS.dmg) |
 | **Windows** | [OpenCowork-Windows-Setup.exe](https://github.com/kuehntechlabs/opencowork/releases/latest/download/OpenCowork-Windows-Setup.exe) |
 
-> **macOS users:** The app is not yet notarized with Apple. On first launch, macOS will show a security warning. To open it, right-click the app and select **Open**, then confirm in the dialog. Alternatively, run:
-> ```bash
-> xattr -cr /Applications/OpenCowork.app
-> ```
+**macOS users — first launch:** The app isn't signed by Apple yet, so macOS will show a security warning the first time you open it. Right-click (or Control-click) the app icon and choose **Open**, then confirm. You only need to do this once.
 
-### Prerequisites
-
-OpenCowork requires the [OpenCode](https://github.com/nicholasgriffintn/opencode) CLI to be installed:
+If that doesn't work, open **Terminal** and paste:
 
 ```bash
-npm install -g opencode-ai@latest
+xattr -cr /Applications/OpenCowork.app
 ```
-
-> The app will attempt to install this automatically on first run if it's not found.
 
 ---
 
-## Development
+## First launch
 
-### Setup
+1. **Open OpenCowork.** The welcome screen explains what's where.
+2. **Add a provider key.** Go to Settings → Providers and paste in a key from whichever service your team uses. If you don't have one, ask your IT contact.
+3. **Say hi.** Type a message in the chat and press enter. That's it.
+4. **Optional — connect your tools.** Visit the Tools (MCP) page and install the integrations your team relies on.
+5. **Optional — install a Skill or two** from the Skills catalogue to teach the assistant your team's conventions.
+
+The app will also install its built-in helper (`opencode`) for you on first run if it isn't already there.
+
+---
+
+## Daily use tips
+
+- **Speak plainly.** You don't need prompts or tricks. "Shorten this. Keep the bullet points." works.
+- **Iterate in the same chat.** Follow-ups are cheaper and faster than starting over, because the assistant already has context.
+- **Pin recurring work as a Project.** Put style rules, client background, or "always do X" into the project instructions once, and stop repeating yourself.
+- **Let it ask.** If the assistant pops an inline picker, that means it's unsure — answering takes a second and the result will be sharper.
+- **Watch the side panel.** If the cost or context bar is climbing fast, it's a good moment to start a new chat.
+- **Open the folder.** The little folder button in the chat header jumps straight to the working directory in Finder / File Explorer, handy for grabbing files the assistant just produced.
+
+---
+
+## Your data
+
+- OpenCowork runs on **your** laptop. Your chats, attachments, and projects live locally by default.
+- When you send a message, it goes to **the AI provider you configured** (Anthropic, OpenAI, a local model, etc.) — nowhere else.
+- Connected tools (MCP) only see what you let them see, and only when the assistant actually calls them. You can disconnect any tool at any time.
+- There is no OpenCowork cloud, no telemetry account, no shared history.
+
+If your team has its own data-handling rules, check with IT before plugging in an external provider or an external tool.
+
+---
+
+## Getting help
+
+- **Stuck?** Start a fresh chat and describe what you're trying to do — the assistant is often the fastest help desk.
+- **Something broken?** [Open an issue](../../issues) and include what you did, what you expected, what happened, and a screenshot if you have one.
+- **Want a feature?** Same place — file an issue and tell us the problem you'd like it to solve, not just the feature you imagine.
+
+---
+
+## For IT and developers
+
+OpenCowork is an Electron desktop app (React 19, Tailwind CSS 4, Zustand, TypeScript) that wraps the open-source [OpenCode](https://github.com/nicholasgriffintn/opencode) agent as a local sidecar process. The renderer talks to the sidecar over HTTP and Server-Sent Events; MCP servers are introspected over stdio or HTTP/SSE.
+
+**Run from source:**
 
 ```bash
 git clone https://github.com/kuehntechlabs/opencowork.git
 cd opencowork
 npm install
-```
-
-### Run
-
-```bash
 npm run dev
 ```
 
-This starts the Electron app with hot reload for the renderer process.
-
-### Build
+**Other scripts:**
 
 ```bash
-npm run build
+npm run build         # compile the app
+npm run typecheck     # TypeScript check
+npm run package:mac   # build signed macOS artifacts (DMG + ZIP)
+npm run package:win   # build Windows NSIS installer
 ```
 
-### Package
-
-```bash
-npm run package:mac   # macOS Apple Silicon (DMG + ZIP)
-npm run package:win   # Windows (NSIS installer)
-```
-
-### Type Check
-
-```bash
-npm run typecheck
-```
-
----
-
-## Architecture
-
-OpenCowork follows a standard Electron multi-process architecture:
-
-```
-┌─────────────────────────────────────────────────┐
-│                  Main Process                   │
-│  Window management, IPC, sidecar control        │
-│                                                 │
-│  ┌─────────────┐  ┌──────────────────────────┐  │
-│  │  Sidecar    │  │  MCP Introspection       │  │
-│  │  (OpenCode) │  │  (stdio / HTTP clients)  │  │
-│  └──────┬──────┘  └──────────────────────────┘  │
-│         │ HTTP + SSE                            │
-├─────────┼───────────────────────────────────────┤
-│         │        Preload (Context Bridge)       │
-├─────────┼───────────────────────────────────────┤
-│         ▼        Renderer Process               │
-│  ┌────────────────────────────────────────────┐ │
-│  │  React 19 + Zustand + Tailwind CSS 4       │ │
-│  │                                            │ │
-│  │  Chat ─── Artifacts ─── MCP ─── Projects   │ │
-│  └────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────┘
-```
-
-### Project Structure
+**Project layout:**
 
 ```
 src/
-├── main/               # Electron main process
-│   ├── index.ts        # App entry, IPC handlers
-│   ├── sidecar.ts      # OpenCode process management
-│   ├── mcp-inspect.ts  # MCP server introspection
-│   └── menu.ts         # Application menu
-├── preload/
-│   └── index.ts        # Context bridge (secure IPC)
-└── renderer/           # React UI
-    ├── api/            # HTTP client, SSE, types
-    ├── stores/         # Zustand state management
-    ├── components/
-    │   ├── chat/       # Chat UI (messages, input, tools)
-    │   ├── artifacts/  # Artifact renderers (HTML, React, SVG)
-    │   ├── layout/     # App layout, sidebar, panels
-    │   ├── pages/      # Customize, projects, directory
-    │   └── settings/   # Provider configuration
-    ├── data/           # Marketplace catalog, registry fetch
-    └── utils/          # Artifact detection, prompts
+├── main/       Electron main process (IPC, sidecar, menus)
+├── preload/    Context bridge for secure renderer ↔ main IPC
+└── renderer/   React UI (chat, artifacts, MCP, projects, settings)
 ```
 
-### Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Desktop | Electron 41 |
-| UI | React 19, Tailwind CSS 4 |
-| State | Zustand |
-| Build | electron-vite, electron-builder |
-| Language | TypeScript |
-| Backend | OpenCode (spawned as sidecar process) |
-
----
-
-## Contributing
-
-Contributions are welcome! Here's how to get started:
-
-1. **Fork** the repository
-2. **Create a branch** for your feature or fix (`git checkout -b my-feature`)
-3. **Make your changes** and ensure `npm run typecheck` passes
-4. **Commit** with a clear message describing what and why
-5. **Open a Pull Request** against `main`
-
-### Guidelines
-
-- Keep PRs focused — one feature or fix per PR
-- Follow the existing code style (TypeScript, functional React components, Zustand stores)
-- Test your changes on both macOS and Windows if possible
-- For large changes, open an issue first to discuss the approach
-
-### Reporting Issues
-
-Found a bug or have a feature request? [Open an issue](../../issues) with:
-- Steps to reproduce (for bugs)
-- Expected vs actual behavior
-- Screenshots if applicable
-- Your OS and app version
+**Contributing:** fork, branch, make sure `npm run typecheck` passes, and open a focused PR against `main`. Keep one feature or fix per PR, and open an issue first for larger changes.
 
 ---
 

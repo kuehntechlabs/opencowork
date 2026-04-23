@@ -56,7 +56,7 @@ export function SlashPopover({
               key={cmd.id}
               data-slash-id={cmd.id}
               onClick={() => onSelect(cmd)}
-              onMouseEnter={() => onActiveChange(cmd.id)}
+              onMouseMove={() => onActiveChange(cmd.id)}
               className={`flex w-full items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left transition-colors ${
                 activeId === cmd.id
                   ? "bg-accent/10 text-accent"

@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   ipcMain,
   dialog,
+  session,
   shell,
   nativeImage,
 } from "electron";
@@ -16,6 +17,7 @@ import {
   writeFileSync,
   readFileSync,
   copyFileSync,
+  cpSync,
   rmSync,
 } from "node:fs";
 import log from "electron-log";
@@ -36,6 +38,21 @@ import {
   clearMCPCache,
 } from "./mcp-inspect";
 import { createMenu } from "./menu";
+import {
+  installPluginFromSource,
+  listInstalledPlugins,
+  removePlugin,
+  type PluginSource,
+} from "./plugins";
+import {
+  addMarketplace,
+  listMarketplaces,
+  removeMarketplace,
+  refreshMarketplace,
+  installMarketplacePlugin,
+  inspectMarketplacePlugin,
+  type MarketplaceSource,
+} from "./marketplaces";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -70,6 +87,20 @@ function createWindow() {
     return { action: "deny" };
   });
 
+  // Set Content-Security-Policy in production
+  if (!process.env.ELECTRON_RENDERER_URL) {
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          "Content-Security-Policy": [
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://localhost:* https:; font-src 'self' data:;",
+          ],
+        },
+      });
+    });
+  }
+
   if (process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
@@ -97,6 +128,31 @@ ipcMain.handle("show-notification", (_event, title: string, body: string) => {
 
 ipcMain.handle("get-platform", () => process.platform);
 
+ipcMain.handle(
+  "open-in-file-manager",
+  async (
+    _event,
+    targetPath: string,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      if (!targetPath || !existsSync(targetPath)) {
+        return { ok: false, error: "Path does not exist" };
+      }
+      const isDir = statSync(targetPath).isDirectory();
+      if (isDir) {
+        const err = await shell.openPath(targetPath);
+        if (err) return { ok: false, error: err };
+        return { ok: true };
+      }
+      shell.showItemInFolder(targetPath);
+      return { ok: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      return { ok: false, error: msg };
+    }
+  },
+);
+
 ipcMain.handle("read-provider-config", () => readOpencodeConfig());
 ipcMain.handle(
   "write-provider-config",
@@ -108,23 +164,37 @@ ipcMain.handle("restart-sidecar", async () => {
   return url;
 });
 
-ipcMain.handle("sync-ollama-models", async () => {
+async function syncOllamaModelsToConfig(): Promise<{
+  synced: boolean;
+  models: string[];
+  changed: boolean;
+}> {
   try {
     const res = await fetch("http://localhost:11434/api/tags");
-    if (!res.ok) return { synced: false, models: [] };
+    if (!res.ok) return { synced: false, models: [], changed: false };
     const data = (await res.json()) as {
       models?: { name: string; size: number }[];
     };
     const ollamaModels = (data.models ?? []).map((m) => m.name);
 
-    // Update the opencode config to match actual Ollama models
     const config = readOpencodeConfig();
     const providers = (config.provider ?? {}) as Record<
       string,
       Record<string, unknown>
     >;
     const ollama = providers.ollama;
-    if (ollama) {
+    if (!ollama) {
+      return { synced: true, models: ollamaModels, changed: false };
+    }
+
+    const existing = Object.keys(
+      (ollama.models ?? {}) as Record<string, unknown>,
+    ).sort();
+    const next = [...ollamaModels].sort();
+    const changed =
+      existing.length !== next.length || existing.some((n, i) => n !== next[i]);
+
+    if (changed) {
       const models: Record<string, { name: string }> = {};
       for (const name of ollamaModels) {
         models[name] = { name };
@@ -133,10 +203,15 @@ ipcMain.handle("sync-ollama-models", async () => {
       writeProviderConfig(providers);
       log.info(`Synced ${ollamaModels.length} Ollama models to config`);
     }
-    return { synced: true, models: ollamaModels };
+    return { synced: true, models: ollamaModels, changed };
   } catch {
-    return { synced: false, models: [] };
+    return { synced: false, models: [], changed: false };
   }
+}
+
+ipcMain.handle("sync-ollama-models", async () => {
+  const { synced, models } = await syncOllamaModelsToConfig();
+  return { synced, models };
 });
 
 // Skills management
@@ -208,6 +283,250 @@ ipcMain.handle("remove-skill", async (_event, location: string) => {
     return { ok: false, output: msg };
   }
 });
+
+// Create skill from uploaded file (.md, .zip, .skill)
+ipcMain.handle("create-skill-from-file", async (_event, filePath: string) => {
+  try {
+    const skillsDir = join(homedir(), ".claude", "skills");
+    if (!existsSync(skillsDir)) mkdirSync(skillsDir, { recursive: true });
+
+    const ext = filePath.toLowerCase().split(".").pop() || "";
+
+    if (ext === "md") {
+      // Read the .md file and extract skill name from YAML frontmatter
+      const content = readFileSync(filePath, "utf-8");
+      const nameMatch = content.match(/^---[\s\S]*?name:\s*(.+?)[\s\r\n]/m);
+      if (!nameMatch) {
+        return {
+          ok: false,
+          output: "Invalid SKILL.md: missing 'name' in YAML frontmatter.",
+        };
+      }
+      const skillName = nameMatch[1].trim().replace(/[^a-zA-Z0-9_-]/g, "-");
+      const destDir = join(skillsDir, skillName);
+      if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+      copyFileSync(filePath, join(destDir, "SKILL.md"));
+      return { ok: true, output: `Skill "${skillName}" created.` };
+    } else if (ext === "zip" || ext === "skill") {
+      // Extract zip/skill to a temp dir, find SKILL.md, then move to skills dir
+      const tmpDir = join(app.getPath("temp"), `skill-extract-${Date.now()}`);
+      mkdirSync(tmpDir, { recursive: true });
+      try {
+        await execFileAsync("unzip", ["-o", filePath, "-d", tmpDir], {
+          timeout: 30_000,
+        });
+        // Find SKILL.md in extracted contents
+        const findSkillMd = (dir: string): string | null => {
+          for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            if (entry.name === "SKILL.md" && entry.isFile()) return dir;
+            if (entry.isDirectory() && !entry.name.startsWith(".")) {
+              const found = findSkillMd(join(dir, entry.name));
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        const skillRoot = findSkillMd(tmpDir);
+        if (!skillRoot) {
+          rmSync(tmpDir, { recursive: true, force: true });
+          return { ok: false, output: "Archive must contain a SKILL.md file." };
+        }
+        // Read skill name from SKILL.md frontmatter
+        const mdContent = readFileSync(join(skillRoot, "SKILL.md"), "utf-8");
+        const nm = mdContent.match(/^---[\s\S]*?name:\s*(.+?)[\s\r\n]/m);
+        const skillName = nm
+          ? nm[1].trim().replace(/[^a-zA-Z0-9_-]/g, "-")
+          : `skill-${Date.now()}`;
+        const destDir = join(skillsDir, skillName);
+        if (existsSync(destDir))
+          rmSync(destDir, { recursive: true, force: true });
+        // Copy extracted skill directory
+        cpSync(skillRoot, destDir, { recursive: true });
+        rmSync(tmpDir, { recursive: true, force: true });
+        return { ok: true, output: `Skill "${skillName}" created.` };
+      } catch (err: unknown) {
+        rmSync(tmpDir, { recursive: true, force: true });
+        throw err;
+      }
+    } else {
+      return { ok: false, output: `Unsupported file type: .${ext}` };
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return { ok: false, output: msg };
+  }
+});
+
+// Create skill from written instructions (name, description, instructions)
+ipcMain.handle(
+  "create-skill-from-instructions",
+  async (_event, name: string, description: string, instructions: string) => {
+    try {
+      const skillsDir = join(homedir(), ".claude", "skills");
+      if (!existsSync(skillsDir)) mkdirSync(skillsDir, { recursive: true });
+
+      const safeName = name.trim().replace(/[^a-zA-Z0-9_-]/g, "-");
+      if (!safeName) return { ok: false, output: "Skill name is required." };
+
+      const destDir = join(skillsDir, safeName);
+      if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+
+      const content = `---
+name: ${name.trim()}
+description: ${description.trim()}
+---
+
+${instructions.trim()}
+`;
+      writeFileSync(join(destDir, "SKILL.md"), content, "utf-8");
+      return { ok: true, output: `Skill "${safeName}" created.` };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      return { ok: false, output: msg };
+    }
+  },
+);
+
+// Open native file picker for skill files
+ipcMain.handle("pick-skill-file", async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Upload Skill",
+    filters: [{ name: "Skill files", extensions: ["md", "zip", "skill"] }],
+    properties: ["openFile"],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
+// Plugin management
+ipcMain.handle(
+  "install-plugin",
+  async (_event, source: PluginSource, opts?: { overwrite?: boolean }) => {
+    return installPluginFromSource(source, opts ?? {});
+  },
+);
+
+ipcMain.handle("list-installed-plugins", () => {
+  return listInstalledPlugins();
+});
+
+ipcMain.handle("remove-plugin", (_event, name: string) => {
+  return removePlugin(name);
+});
+
+ipcMain.handle("path-exists", (_event, path: string) => {
+  try {
+    return typeof path === "string" && path.length > 0 && existsSync(path);
+  } catch {
+    return false;
+  }
+});
+
+ipcMain.handle("pick-plugin-folder", async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Select Plugin Folder",
+    properties: ["openDirectory"],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
+// Marketplaces
+ipcMain.handle(
+  "add-marketplace",
+  async (_event, source: MarketplaceSource) => {
+    return addMarketplace(source);
+  },
+);
+
+ipcMain.handle("list-marketplaces", () => {
+  return listMarketplaces();
+});
+
+ipcMain.handle("remove-marketplace", (_event, name: string) => {
+  return removeMarketplace(name);
+});
+
+ipcMain.handle("refresh-marketplace", async (_event, name: string) => {
+  return refreshMarketplace(name);
+});
+
+ipcMain.handle(
+  "install-marketplace-plugin",
+  async (_event, marketplaceName: string, pluginName: string) => {
+    return installMarketplacePlugin(marketplaceName, pluginName);
+  },
+);
+
+ipcMain.handle(
+  "inspect-marketplace-plugin",
+  (_event, marketplaceName: string, pluginName: string) => {
+    return inspectMarketplacePlugin(marketplaceName, pluginName);
+  },
+);
+
+// Open native file picker for chat attachments — returns files as base64 data URLs
+const ATTACHMENT_MIME_BY_EXT: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".bmp": "image/bmp",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain",
+  ".md": "text/markdown",
+  ".json": "application/json",
+  ".csv": "text/csv",
+  ".html": "text/html",
+  ".css": "text/css",
+  ".js": "text/javascript",
+  ".ts": "text/typescript",
+};
+
+function mimeFromPath(p: string): string {
+  const i = p.lastIndexOf(".");
+  if (i === -1) return "application/octet-stream";
+  return (
+    ATTACHMENT_MIME_BY_EXT[p.slice(i).toLowerCase()] ||
+    "application/octet-stream"
+  );
+}
+
+ipcMain.handle(
+  "pick-attachments",
+  async (): Promise<
+    { filename: string; mime: string; url: string; size: number }[]
+  > => {
+    if (!mainWindow) return [];
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: "Attach Files",
+      properties: ["openFile", "multiSelections"],
+    });
+    if (result.canceled || result.filePaths.length === 0) return [];
+    const out: { filename: string; mime: string; url: string; size: number }[] =
+      [];
+    for (const p of result.filePaths) {
+      try {
+        const data = readFileSync(p);
+        const mime = mimeFromPath(p);
+        const filename = p.split("/").pop() || p.split("\\").pop() || "file";
+        out.push({
+          filename,
+          mime,
+          url: `data:${mime};base64,${data.toString("base64")}`,
+          size: data.length,
+        });
+      } catch (err) {
+        log.warn("Failed to read attachment:", p, err);
+      }
+    }
+    return out;
+  },
+);
 
 // Proxy fetch (bypass CORS for renderer)
 ipcMain.handle("fetch-url", async (_event, url: string) => {
@@ -314,10 +633,18 @@ ipcMain.handle("open-file-picker", async () => {
 });
 
 ipcMain.handle("get-recent-directories", () => {
-  return appStore.get("recentDirectories", []) as {
+  const stored = appStore.get("recentDirectories", []) as {
     path: string;
     lastUsed: number;
   }[];
+  const fresh = stored.filter(
+    (r) => typeof r.path === "string" && r.path.length > 0 && existsSync(r.path),
+  );
+  // Persist the pruned list so the stale entries stop coming back.
+  if (fresh.length !== stored.length) {
+    appStore.set("recentDirectories", fresh);
+  }
+  return fresh;
 });
 
 ipcMain.handle("add-recent-directory", (_event, dirPath: string) => {
@@ -439,7 +766,10 @@ if (!gotSingleInstanceLock) {
       log.error("Failed to start opencode sidecar:", err);
     }
 
+    syncOllamaModelsToConfig().catch(() => {});
+
     createWindow();
+    setupOllamaPolling();
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -451,6 +781,32 @@ if (!gotSingleInstanceLock) {
   });
 
   app.on("before-quit", async () => {
+    stopOllamaPolling();
     await stopSidecar();
   });
+}
+
+let ollamaPollTimer: NodeJS.Timeout | null = null;
+const OLLAMA_POLL_INTERVAL_MS = 30_000;
+
+function startOllamaPoll() {
+  if (ollamaPollTimer) return;
+  ollamaPollTimer = setInterval(() => {
+    syncOllamaModelsToConfig().catch(() => {});
+  }, OLLAMA_POLL_INTERVAL_MS);
+}
+
+function stopOllamaPolling() {
+  if (ollamaPollTimer) {
+    clearInterval(ollamaPollTimer);
+    ollamaPollTimer = null;
+  }
+}
+
+function setupOllamaPolling() {
+  if (!mainWindow) return;
+  if (mainWindow.isFocused()) startOllamaPoll();
+  mainWindow.on("focus", startOllamaPoll);
+  mainWindow.on("blur", stopOllamaPolling);
+  mainWindow.on("closed", stopOllamaPolling);
 }

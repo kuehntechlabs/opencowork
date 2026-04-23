@@ -9,12 +9,19 @@ export type Theme = "dark" | "light" | "system";
 export type PermissionMode = "ask" | "auto-accept" | "plan" | "bypass";
 export type RightPanelPage = "projects" | "customize" | "directory" | null;
 export type DirectoryCategory = "skills" | "connectors" | "plugins";
+export type ModelVariant = string | null;
+
+function modelVariantKey(provider: string, model: string): string {
+  return `${provider}/${model}`;
+}
 
 interface SettingsState {
   theme: Theme;
   sidebarOpen: boolean;
   selectedProvider: string | null;
   selectedModel: string | null;
+  selectedVariant: ModelVariant;
+  variantByModel: Record<string, string | undefined>;
   settingsModalOpen: boolean;
   permissionMode: PermissionMode;
   rightPanelPage: RightPanelPage;
@@ -24,6 +31,8 @@ interface SettingsState {
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   setSelectedModel: (provider: string, model: string) => void;
+  setSelectedVariant: (variant: ModelVariant) => void;
+  cycleSelectedVariant: () => void;
   setSettingsModalOpen: (open: boolean) => void;
   setPermissionMode: (mode: PermissionMode) => void;
   setRightPanelPage: (page: RightPanelPage) => void;
@@ -46,6 +55,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   sidebarOpen: true,
   selectedProvider: null,
   selectedModel: null,
+  selectedVariant: null,
+  variantByModel: {},
   settingsModalOpen: false,
   permissionMode: "ask" as PermissionMode,
   rightPanelPage: null as RightPanelPage,
@@ -72,7 +83,38 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setSelectedModel: (provider, model) => {
     localStorage.setItem("opencowork-provider", provider);
     localStorage.setItem("opencowork-model", model);
-    set({ selectedProvider: provider, selectedModel: model });
+    const key = modelVariantKey(provider, model);
+    const selectedVariant = get().variantByModel[key] ?? null;
+    set({ selectedProvider: provider, selectedModel: model, selectedVariant });
+  },
+
+  setSelectedVariant: (variant) => {
+    const provider = get().selectedProvider;
+    const model = get().selectedModel;
+    if (!provider || !model) {
+      set({ selectedVariant: variant });
+      return;
+    }
+
+    const key = modelVariantKey(provider, model);
+    const nextMap = { ...get().variantByModel, [key]: variant ?? undefined };
+
+    if (variant) {
+      localStorage.setItem("opencowork-variant", variant);
+    } else {
+      localStorage.removeItem("opencowork-variant");
+    }
+    localStorage.setItem("opencowork-model-variants", JSON.stringify(nextMap));
+    set({ selectedVariant: variant, variantByModel: nextMap });
+  },
+
+  cycleSelectedVariant: () => {
+    // Default fallback cycle when explicit model variant list isn't available.
+    const current = get().selectedVariant;
+    const all: ModelVariant[] = [null, "low", "medium", "high"];
+    const index = all.indexOf(current);
+    const next = all[(index + 1) % all.length];
+    get().setSelectedVariant(next);
   },
 }));
 
@@ -92,9 +134,35 @@ if (savedMode) {
 }
 const savedProvider = localStorage.getItem("opencowork-provider");
 const savedModel = localStorage.getItem("opencowork-model");
+const savedVariant = localStorage.getItem("opencowork-variant") as
+  | ModelVariant
+  | null;
+const savedVariantByModelRaw = localStorage.getItem("opencowork-model-variants");
+let savedVariantByModel: Record<string, string | undefined> = {};
+if (savedVariantByModelRaw) {
+  try {
+    const parsed = JSON.parse(savedVariantByModelRaw) as Record<
+      string,
+      string | undefined
+    >;
+    if (parsed && typeof parsed === "object") {
+      savedVariantByModel = parsed;
+    }
+  } catch {
+    savedVariantByModel = {};
+  }
+}
+if (typeof savedVariantByModel === "object") {
+  useSettingsStore.setState({ variantByModel: savedVariantByModel });
+}
 if (savedProvider && savedModel) {
+  const key = modelVariantKey(savedProvider, savedModel);
   useSettingsStore.setState({
     selectedProvider: savedProvider,
     selectedModel: savedModel,
+    selectedVariant: savedVariantByModel[key] ?? null,
   });
+}
+if (savedVariant && !useSettingsStore.getState().selectedVariant) {
+  useSettingsStore.setState({ selectedVariant: savedVariant });
 }

@@ -1,14 +1,28 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSettingsStore } from "../../stores/settings-store";
+import { useServerStore } from "../../stores/server-store";
 import { listSkills, type SkillInfo } from "../../api/client";
+import { restartAndReconnect } from "../../hooks/useDirectoryInstall";
 import { SkillDetailView } from "./SkillDetailView";
 import { FilePreviewView } from "./FilePreviewView";
+import { AddPluginDialog } from "./AddPluginDialog";
+import { AddMarketplaceDialog } from "./AddMarketplaceDialog";
+import {
+  PluginsList,
+  PluginDetailView,
+  MarketplacePluginDetailView,
+} from "./PluginsPanel";
+import type {
+  InstalledPlugin,
+  Marketplace,
+  MarketplacePluginInspection,
+} from "../../../preload/index";
 
 const api = (
   window as unknown as { api: import("../../../preload/index").ElectronAPI }
 ).api;
 
-type Section = "skills" | "connectors" | null;
+type Section = "skills" | "connectors" | "plugins" | null;
 
 interface MCPTool {
   name: string;
@@ -83,11 +97,77 @@ export function CustomizePage() {
   const [selectedServer, setSelectedServer] = useState<MCPServer | null>(null);
   const [connectorSearch, setConnectorSearch] = useState("");
 
+  // Plugins
+  const [plugins, setPlugins] = useState<InstalledPlugin[]>([]);
+  const [marketplaces, setMarketplaces] = useState<Marketplace[]>([]);
+  const [pluginsLoading, setPluginsLoading] = useState(false);
+  const [installingKeys, setInstallingKeys] = useState<Set<string>>(new Set());
+  const [selectedPlugin, setSelectedPlugin] = useState<InstalledPlugin | null>(
+    null,
+  );
+  const [selectedMarketplacePlugin, setSelectedMarketplacePlugin] =
+    useState<{ marketplaceName: string; pluginName: string } | null>(null);
+  const [marketplacePluginInspection, setMarketplacePluginInspection] =
+    useState<MarketplacePluginInspection | null>(null);
+  const [inspectingMarketplacePlugin, setInspectingMarketplacePlugin] =
+    useState(false);
+  const [pluginSearch, setPluginSearch] = useState("");
+
+  // Add dropdown & dialogs
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [showWriteDialog, setShowWriteDialog] = useState(false);
+  const [showConnectorDialog, setShowConnectorDialog] = useState(false);
+  const [showPluginDialog, setShowPluginDialog] = useState(false);
+  const [showMarketplaceDialog, setShowMarketplaceDialog] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close add menu on outside click
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        addMenuRef.current &&
+        !addMenuRef.current.contains(e.target as Node)
+      ) {
+        setAddMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [addMenuOpen]);
+
   // File tree state (lives here so left panel tree and right panel share it)
   const [dirContents, setDirContents] = useState<Record<string, FileEntry[]>>(
     {},
   );
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const openConnectors = () => {
+      setSection("connectors");
+      setSelectedSkill(null);
+      setSelectedFile(null);
+      setSelectedServer(null);
+    };
+    const openSkills = () => {
+      setSection("skills");
+      setSelectedServer(null);
+    };
+    window.addEventListener(
+      "opencowork:open-customize-connectors",
+      openConnectors,
+    );
+    window.addEventListener("opencowork:open-customize-skills", openSkills);
+    return () =>
+      {
+        window.removeEventListener(
+          "opencowork:open-customize-connectors",
+          openConnectors,
+        );
+        window.removeEventListener("opencowork:open-customize-skills", openSkills);
+      };
+  }, []);
 
   // Load skills when section becomes "skills"
   useEffect(() => {
@@ -127,6 +207,131 @@ export function CustomizePage() {
         setMcpLoading(false);
       });
   }, [section]);
+
+  // Load plugins + marketplaces when section becomes "plugins"
+  useEffect(() => {
+    if (section !== "plugins") return;
+    setPluginsLoading(true);
+    Promise.all([api.listInstalledPlugins(), api.listMarketplaces()])
+      .then(([p, m]) => {
+        setPlugins(p);
+        setMarketplaces(m);
+      })
+      .catch(() => {
+        setPlugins([]);
+        setMarketplaces([]);
+      })
+      .finally(() => setPluginsLoading(false));
+  }, [section]);
+
+  const refreshPlugins = useCallback(() => {
+    setPluginsLoading(true);
+    Promise.all([api.listInstalledPlugins(), api.listMarketplaces()])
+      .then(([p, m]) => {
+        setPlugins(p);
+        setMarketplaces(m);
+      })
+      .catch(() => {
+        setPlugins([]);
+        setMarketplaces([]);
+      })
+      .finally(() => setPluginsLoading(false));
+  }, []);
+
+  const handleRemovePlugin = useCallback(async (name: string) => {
+    const result = await api.removePlugin(name);
+    if (result.ok) {
+      useServerStore.getState().setNeedsRestart(true);
+      setPlugins((prev) => prev.filter((p) => p.name !== name));
+      setSelectedPlugin(null);
+    } else {
+      console.error("Plugin remove failed:", result.error);
+    }
+  }, []);
+
+  const handleSelectMarketplacePlugin = useCallback(
+    async (marketplaceName: string, pluginName: string) => {
+      setSelectedPlugin(null);
+      setSelectedMarketplacePlugin({ marketplaceName, pluginName });
+      setMarketplacePluginInspection(null);
+      setInspectingMarketplacePlugin(true);
+      try {
+        const result = await api.inspectMarketplacePlugin(
+          marketplaceName,
+          pluginName,
+        );
+        if ("entry" in result) {
+          setMarketplacePluginInspection(result);
+        } else {
+          console.error("Inspect failed:", result.error);
+        }
+      } finally {
+        setInspectingMarketplacePlugin(false);
+      }
+    },
+    [],
+  );
+
+  const handleSelectInstalledPlugin = useCallback((plugin: InstalledPlugin) => {
+    setSelectedMarketplacePlugin(null);
+    setMarketplacePluginInspection(null);
+    setSelectedPlugin(plugin);
+  }, []);
+
+  const handleInstallMarketplacePlugin = useCallback(
+    async (marketplaceName: string, pluginName: string) => {
+      const key = `${marketplaceName}/${pluginName}`;
+      setInstallingKeys((prev) => new Set(prev).add(key));
+      try {
+        const result = await api.installMarketplacePlugin(
+          marketplaceName,
+          pluginName,
+        );
+        if (result.ok) {
+          useServerStore.getState().setNeedsRestart(true);
+          setPlugins((prev) => [
+            result.plugin,
+            ...prev.filter((p) => p.name !== result.plugin.name),
+          ]);
+        } else {
+          console.error("Install failed:", result.error);
+          window.api
+            .showNotification("Install failed", result.error)
+            .catch(() => {});
+        }
+      } finally {
+        setInstallingKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [],
+  );
+
+  const handleRemoveMarketplace = useCallback(async (name: string) => {
+    const result = await api.removeMarketplace(name);
+    if (result.ok) {
+      setMarketplaces((prev) => prev.filter((m) => m.name !== name));
+    } else {
+      console.error("Remove marketplace failed:", result.error);
+    }
+  }, []);
+
+  const handleRefreshMarketplace = useCallback(async (name: string) => {
+    const result = await api.refreshMarketplace(name);
+    if (result.ok) {
+      setMarketplaces((prev) =>
+        prev.map((m) => (m.name === name ? result.marketplace : m)),
+      );
+    } else {
+      console.error("Refresh marketplace failed:", result.error);
+      setMarketplaces((prev) =>
+        prev.map((m) => (m.name === name ? { ...m, error: result.error } : m)),
+      );
+    }
+  }, []);
 
   const handleRefreshMCP = useCallback(() => {
     setMcpLoading(true);
@@ -203,6 +408,9 @@ export function CustomizePage() {
     setSelectedFile(null);
     setExpandedDirs(new Set());
     setSelectedServer(null);
+    setSelectedPlugin(null);
+    setSelectedMarketplacePlugin(null);
+    setMarketplacePluginInspection(null);
   }, []);
 
   const refreshSkills = useCallback(() => {
@@ -214,18 +422,16 @@ export function CustomizePage() {
 
   const handleRemoveConnector = useCallback(async (serverName: string) => {
     await api.removeMCPConfig(serverName);
-    await api.restartSidecar().catch(() => {});
+    useServerStore.getState().setNeedsRestart(true);
     setSelectedServer(null);
-    // Refresh the connectors list
-    api
-      .refreshMCPServers()
-      .then(setServers)
-      .catch(() => {});
+    // Remove from local state immediately
+    setMcpServers((prev) => prev.filter((s) => s.name !== serverName));
   }, []);
 
   const handleRemoveSkill = useCallback(async (location: string) => {
     const result = await api.removeSkill(location);
     if (result.ok) {
+      useServerStore.getState().setNeedsRestart(true);
       // Remove from local state immediately (sidecar may cache the old list)
       setSkills((prev) => prev.filter((s) => s.location !== location));
       setSelectedSkill(null);
@@ -234,6 +440,31 @@ export function CustomizePage() {
       console.error("Remove failed:", result.output);
     }
   }, []);
+
+  const needsRestart = useServerStore((s) => s.needsRestart);
+  const [restarting, setRestarting] = useState(false);
+
+  const handleRestart = useCallback(async () => {
+    setRestarting(true);
+    try {
+      await restartAndReconnect();
+      // Refresh MCP servers after restart
+      api
+        .listMCPServers()
+        .then((servers) => {
+          setMcpServers(servers);
+          if (selectedServer) {
+            const updated = servers.find((s) => s.name === selectedServer.name);
+            setSelectedServer(updated || null);
+          }
+        })
+        .catch(() => {});
+    } catch (err) {
+      console.error("Restart failed:", err);
+    } finally {
+      setRestarting(false);
+    }
+  }, [selectedServer]);
 
   const filtered = search.trim()
     ? skills.filter(
@@ -257,168 +488,889 @@ export function CustomizePage() {
     : mcpServers;
 
   return (
-    <div className="flex h-full min-h-0">
-      {/* LEFT PANEL */}
-      <div className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
-        {/* Drag region + back button + title + add */}
-        <div className="drag-region flex h-12 shrink-0 items-center gap-2 px-4">
-          <button
-            onClick={section ? handleBackToMenu : () => setRightPanelPage(null)}
-            className="no-drag rounded-md p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
-            title="Back"
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Restart banner */}
+      {needsRestart && (
+        <div className="flex shrink-0 items-center gap-3 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="shrink-0 text-amber-400"
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M19 12H5" />
-              <polyline points="12 19 5 12 12 5" />
-            </svg>
-          </button>
-          <span className="no-drag text-sm font-semibold text-text">
-            {section === "skills"
-              ? "Skills"
-              : section === "connectors"
-                ? "Connectors"
-                : "Customize"}
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          <span className="flex-1 text-xs text-amber-300">
+            You need to restart opencowork to take effect.
           </span>
-          <div className="flex-1" />
           <button
-            onClick={() =>
-              openDirectory(section === "connectors" ? "connectors" : "skills")
-            }
-            className="no-drag rounded-md p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
-            title="Browse directory"
+            onClick={handleRestart}
+            disabled={restarting}
+            className="shrink-0 rounded-md bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/30 disabled:opacity-50"
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
+            {restarting ? "Restarting..." : "Restart"}
           </button>
         </div>
+      )}
 
-        {/* Left panel content */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {!section && (
-            <div className="px-4 pb-6">
-              <div className="flex flex-col gap-0.5">
-                <MenuButton
-                  icon={
+      <div className="flex min-h-0 flex-1">
+        {/* LEFT PANEL */}
+        <div className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
+          {/* Drag region + back button + title + add */}
+          <div className="drag-region flex h-12 shrink-0 items-center gap-2 px-4">
+            <button
+              onClick={
+                section ? handleBackToMenu : () => setRightPanelPage(null)
+              }
+              className="no-drag rounded-md p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
+              title="Back"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M19 12H5" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+            </button>
+            <span className="no-drag text-sm font-semibold text-text">
+              {section === "skills"
+                ? "Skills"
+                : section === "connectors"
+                  ? "Connectors"
+                  : section === "plugins"
+                    ? "Plugins"
+                    : "Customize"}
+            </span>
+            <div className="flex-1" />
+            <div className="relative" ref={addMenuRef}>
+              <button
+                onClick={() => setAddMenuOpen((v) => !v)}
+                className="no-drag rounded-md p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
+                title="Add"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+              {addMenuOpen && (
+                <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] rounded-lg border border-border bg-surface-secondary py-1 shadow-lg">
+                  {/* Browse — always shown */}
+                  <button
+                    onClick={() => {
+                      setAddMenuOpen(false);
+                      openDirectory(
+                        section === "connectors" ? "connectors" : "skills",
+                      );
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text hover:bg-surface-hover"
+                  >
                     <svg
-                      width="16"
-                      height="16"
+                      width="14"
+                      height="14"
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="1.5"
                     >
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                      <polyline points="14 2 14 8 20 8" />
-                      <line x1="16" y1="13" x2="8" y2="13" />
-                      <line x1="16" y1="17" x2="8" y2="17" />
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
                     </svg>
-                  }
-                  label="Skills"
-                  onClick={() => setSection("skills")}
-                />
-                <MenuButton
-                  icon={
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
+                    Browse
+                  </button>
+                  <div className="my-1 border-t border-border" />
+
+                  {/* Skills options — shown on Customize or Skills */}
+                  {section !== "connectors" && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setAddMenuOpen(false);
+                          setShowUploadDialog(true);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text hover:bg-surface-hover"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        >
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="17 8 12 3 7 8" />
+                          <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        Upload skill
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAddMenuOpen(false);
+                          setShowWriteDialog(true);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text hover:bg-surface-hover"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        >
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                        Write skill instructions
+                      </button>
+                    </>
+                  )}
+
+                  {/* Connector option — shown on Customize or Connectors */}
+                  {section !== "skills" && section !== "plugins" && (
+                    <button
+                      onClick={() => {
+                        setAddMenuOpen(false);
+                        setShowConnectorDialog(true);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text hover:bg-surface-hover"
                     >
-                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                    </svg>
-                  }
-                  label="Connectors"
-                  onClick={() => setSection("connectors")}
-                />
-              </div>
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                      </svg>
+                      Add MCP server
+                    </button>
+                  )}
+
+                  {/* Plugin options — shown on Customize or Plugins */}
+                  {section !== "skills" && section !== "connectors" && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setAddMenuOpen(false);
+                          setShowMarketplaceDialog(true);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text hover:bg-surface-hover"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        >
+                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                          <polyline points="9 22 9 12 15 12 15 22" />
+                        </svg>
+                        Add marketplace
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAddMenuOpen(false);
+                          setShowPluginDialog(true);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text hover:bg-surface-hover"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        >
+                          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                          <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                          <line x1="12" y1="22.08" x2="12" y2="12" />
+                        </svg>
+                        Install plugin directly
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
-          {section === "skills" && (
-            <SkillsList
-              skills={userSkills}
-              builtInSkills={nodeModuleSkills}
-              loading={loading}
-              search={search}
-              onSearchChange={setSearch}
-              selectedSkill={selectedSkill}
-              onSelectSkill={handleSelectSkill}
-              onRemoveSkill={handleRemoveSkill}
-              dirContents={dirContents}
-              expandedDirs={expandedDirs}
-              onToggleDir={toggleDir}
-              onOpenFile={handleOpenFile}
-              onAdd={() => openDirectory("skills")}
-            />
-          )}
+          {/* Left panel content */}
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            {!section && (
+              <div className="px-4 pb-6">
+                <div className="flex flex-col gap-0.5">
+                  <MenuButton
+                    icon={
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                      </svg>
+                    }
+                    label="Skills"
+                    onClick={() => setSection("skills")}
+                  />
+                  <MenuButton
+                    icon={
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                      </svg>
+                    }
+                    label="Connectors"
+                    onClick={() => setSection("connectors")}
+                  />
+                  <MenuButton
+                    icon={
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                        <line x1="12" y1="22.08" x2="12" y2="12" />
+                      </svg>
+                    }
+                    label="Plugins"
+                    onClick={() => setSection("plugins")}
+                  />
+                </div>
+              </div>
+            )}
 
-          {section === "connectors" && (
-            <ConnectorsList
-              servers={filteredServers}
-              loading={mcpLoading}
-              introspecting={mcpIntrospecting}
-              search={connectorSearch}
-              onSearchChange={setConnectorSearch}
-              selectedServer={selectedServer}
-              onSelectServer={setSelectedServer}
-              onRefresh={handleRefreshMCP}
-              onAdd={() => openDirectory("connectors")}
-            />
-          )}
+            {section === "skills" && (
+              <SkillsList
+                skills={userSkills}
+                builtInSkills={nodeModuleSkills}
+                loading={loading}
+                search={search}
+                onSearchChange={setSearch}
+                selectedSkill={selectedSkill}
+                onSelectSkill={handleSelectSkill}
+                onRemoveSkill={handleRemoveSkill}
+                dirContents={dirContents}
+                expandedDirs={expandedDirs}
+                onToggleDir={toggleDir}
+                onOpenFile={handleOpenFile}
+                onAdd={() => openDirectory("skills")}
+              />
+            )}
+
+            {section === "connectors" && (
+              <ConnectorsList
+                servers={filteredServers}
+                loading={mcpLoading}
+                introspecting={mcpIntrospecting}
+                search={connectorSearch}
+                onSearchChange={setConnectorSearch}
+                selectedServer={selectedServer}
+                onSelectServer={setSelectedServer}
+                onRefresh={handleRefreshMCP}
+                onAdd={() => openDirectory("connectors")}
+              />
+            )}
+
+            {section === "plugins" && (
+              <PluginsList
+                installedPlugins={plugins}
+                marketplaces={marketplaces}
+                loading={pluginsLoading}
+                installingKeys={installingKeys}
+                search={pluginSearch}
+                onSearchChange={setPluginSearch}
+                selectedPlugin={selectedPlugin}
+                onSelectPlugin={handleSelectInstalledPlugin}
+                selectedMarketplacePluginKey={
+                  selectedMarketplacePlugin
+                    ? `${selectedMarketplacePlugin.marketplaceName}/${selectedMarketplacePlugin.pluginName}`
+                    : null
+                }
+                onSelectMarketplacePlugin={handleSelectMarketplacePlugin}
+                onInstallMarketplacePlugin={handleInstallMarketplacePlugin}
+                onRemoveMarketplace={handleRemoveMarketplace}
+                onRefreshMarketplace={handleRefreshMarketplace}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT PANEL */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="drag-region h-12 w-full shrink-0" />
+          <div className="flex-1 overflow-y-auto">
+            {selectedFile && selectedSkill ? (
+              <FilePreviewView
+                filePath={selectedFile.path}
+                fileName={selectedFile.name}
+                skillName={selectedSkill.name}
+                onBack={handleBackFromFile}
+              />
+            ) : selectedSkill ? (
+              <SkillDetailView
+                skill={selectedSkill}
+                onBack={handleBackFromSkill}
+                onRemove={() => handleRemoveSkill(selectedSkill.location)}
+              />
+            ) : selectedServer ? (
+              <ConnectorDetailView
+                server={selectedServer}
+                introspecting={mcpIntrospecting}
+                onBack={() => setSelectedServer(null)}
+                onRemove={handleRemoveConnector}
+              />
+            ) : selectedPlugin ? (
+              <PluginDetailView
+                plugin={selectedPlugin}
+                onBack={() => setSelectedPlugin(null)}
+                onRemove={handleRemovePlugin}
+              />
+            ) : selectedMarketplacePlugin ? (
+              <MarketplacePluginDetailView
+                marketplaceName={selectedMarketplacePlugin.marketplaceName}
+                inspection={marketplacePluginInspection}
+                loading={inspectingMarketplacePlugin}
+                installed={plugins.some(
+                  (p) => p.name === selectedMarketplacePlugin.pluginName,
+                )}
+                installing={installingKeys.has(
+                  `${selectedMarketplacePlugin.marketplaceName}/${selectedMarketplacePlugin.pluginName}`,
+                )}
+                onBack={() => {
+                  setSelectedMarketplacePlugin(null);
+                  setMarketplacePluginInspection(null);
+                }}
+                onInstall={() => {
+                  handleInstallMarketplacePlugin(
+                    selectedMarketplacePlugin.marketplaceName,
+                    selectedMarketplacePlugin.pluginName,
+                  );
+                }}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <p className="text-sm text-text-tertiary">
+                  {section
+                    ? "Select an item to view details."
+                    : "Select a category to get started."}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* RIGHT PANEL */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="drag-region h-12 w-full shrink-0" />
-        <div className="flex-1 overflow-y-auto">
-          {selectedFile && selectedSkill ? (
-            <FilePreviewView
-              filePath={selectedFile.path}
-              fileName={selectedFile.name}
-              skillName={selectedSkill.name}
-              onBack={handleBackFromFile}
-            />
-          ) : selectedSkill ? (
-            <SkillDetailView
-              skill={selectedSkill}
-              onBack={handleBackFromSkill}
-              onRemove={() => handleRemoveSkill(selectedSkill.location)}
-            />
-          ) : selectedServer ? (
-            <ConnectorDetailView
-              server={selectedServer}
-              introspecting={mcpIntrospecting}
-              onBack={() => setSelectedServer(null)}
-              onRemove={handleRemoveConnector}
-            />
+      {/* Upload Skill Dialog */}
+      {showUploadDialog && (
+        <UploadSkillDialog
+          onClose={() => setShowUploadDialog(false)}
+          onSuccess={() => {
+            setShowUploadDialog(false);
+            useServerStore.getState().setNeedsRestart(true);
+            refreshSkills();
+          }}
+        />
+      )}
+
+      {/* Write Skill Instructions Dialog */}
+      {showWriteDialog && (
+        <WriteSkillDialog
+          onClose={() => setShowWriteDialog(false)}
+          onSuccess={() => {
+            setShowWriteDialog(false);
+            useServerStore.getState().setNeedsRestart(true);
+            refreshSkills();
+          }}
+        />
+      )}
+
+      {/* Add MCP Server Dialog */}
+      {showConnectorDialog && (
+        <AddConnectorDialog
+          onClose={() => setShowConnectorDialog(false)}
+          onSuccess={() => {
+            setShowConnectorDialog(false);
+            useServerStore.getState().setNeedsRestart(true);
+          }}
+        />
+      )}
+
+      {/* Install Plugin Dialog (direct install) */}
+      {showPluginDialog && (
+        <AddPluginDialog
+          onClose={() => setShowPluginDialog(false)}
+          onSuccess={(plugin) => {
+            setShowPluginDialog(false);
+            useServerStore.getState().setNeedsRestart(true);
+            refreshPlugins();
+            setSection("plugins");
+            setSelectedPlugin(plugin);
+          }}
+        />
+      )}
+
+      {/* Add Marketplace Dialog */}
+      {showMarketplaceDialog && (
+        <AddMarketplaceDialog
+          onClose={() => setShowMarketplaceDialog(false)}
+          onSuccess={(marketplace) => {
+            setShowMarketplaceDialog(false);
+            setMarketplaces((prev) => [
+              ...prev.filter((m) => m.name !== marketplace.name),
+              marketplace,
+            ]);
+            setSection("plugins");
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Upload Skill Dialog ─────────────────────────────────────── */
+
+function UploadSkillDialog({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFile = useCallback(
+    async (filePath: string) => {
+      setUploading(true);
+      setError(null);
+      try {
+        const result = await api.createSkillFromFile(filePath);
+        if (result.ok) {
+          onSuccess();
+        } else {
+          setError(result.output);
+        }
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Upload failed");
+      } finally {
+        setUploading(false);
+      }
+    },
+    [onSuccess],
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        const filePath = (file as File & { path?: string }).path;
+        if (filePath) {
+          handleFile(filePath);
+        } else {
+          setError("Could not read file path from dropped file.");
+        }
+      }
+    },
+    [handleFile],
+  );
+
+  const handleClick = useCallback(async () => {
+    const filePath = await api.pickSkillFile();
+    if (filePath) handleFile(filePath);
+  }, [handleFile]);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+      <div className="w-full max-w-md rounded-xl border border-border bg-surface-secondary p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-text">Upload skill</h2>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-text-tertiary hover:bg-surface-hover hover:text-text"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Drop zone */}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          onClick={handleClick}
+          className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-10 transition-colors ${
+            dragOver
+              ? "border-accent bg-accent/5"
+              : "border-border hover:border-text-tertiary"
+          }`}
+        >
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            className="mb-3 text-text-tertiary"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          {uploading ? (
+            <p className="text-sm text-text-tertiary">Uploading...</p>
           ) : (
-            <div className="flex h-full items-center justify-center">
-              <p className="text-sm text-text-tertiary">
-                {section
-                  ? "Select an item to view details."
-                  : "Select a category to get started."}
+            <>
+              <p className="text-sm text-text">
+                Drag & drop or click to upload
               </p>
+              <p className="mt-1 text-xs text-text-tertiary">
+                .md, .zip, or .skill files
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* File requirements */}
+        <div className="mt-4 rounded-md bg-surface px-3 py-2">
+          <p className="mb-1 text-[11px] font-medium text-text-secondary">
+            File requirements
+          </p>
+          <ul className="space-y-0.5 text-[11px] text-text-tertiary">
+            <li>
+              .md file must contain skill name and description formatted in YAML
+            </li>
+            <li>.zip or .skill file must include a SKILL.md file</li>
+          </ul>
+        </div>
+
+        {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={onClose}
+            className="rounded-md px-4 py-1.5 text-xs text-text-secondary hover:bg-surface-hover"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Write Skill Instructions Dialog ─────────────────────────── */
+
+function WriteSkillDialog({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCreate = useCallback(async () => {
+    if (!name.trim()) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const result = await api.createSkillFromInstructions(
+        name,
+        description,
+        instructions,
+      );
+      if (result.ok) {
+        onSuccess();
+      } else {
+        setError(result.output);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Creation failed");
+    } finally {
+      setCreating(false);
+    }
+  }, [name, description, instructions, onSuccess]);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+      <div className="w-full max-w-md rounded-xl border border-border bg-surface-secondary p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-text">
+            Write skill instructions
+          </h2>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-text-tertiary hover:bg-surface-hover hover:text-text"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          {/* Skill name */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">
+              Skill name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="code-review-helper"
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none"
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">
+              Description
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Review code changes for bugs, performance issues, and style. Use when asked to review a PR or diff."
+              rows={3}
+              className="w-full resize-none rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none"
+            />
+          </div>
+
+          {/* Instructions */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">
+              Instructions
+            </label>
+            <textarea
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="Analyze the given code diff. Flag potential bugs, suggest performance improvements, and check for consistent naming conventions. Output a concise list of findings."
+              rows={6}
+              className="w-full resize-none rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-md px-4 py-1.5 text-xs text-text-secondary hover:bg-surface-hover"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleCreate}
+            disabled={!name.trim() || creating}
+            className="rounded-md bg-accent px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+          >
+            {creating ? "Creating..." : "Create"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Add Connector (MCP Server) Dialog ───────────────────────── */
+
+function AddConnectorDialog({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [oauthClientId, setOauthClientId] = useState("");
+  const [oauthClientSecret, setOauthClientSecret] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleAdd = useCallback(async () => {
+    if (!name.trim() || !url.trim()) return;
+    setAdding(true);
+    setError(null);
+    try {
+      const config: Record<string, unknown> = {
+        type: "remote",
+        url: url.trim(),
+      };
+      if (oauthClientId.trim() || oauthClientSecret.trim()) {
+        config.oauthClientId = oauthClientId.trim();
+        config.oauthClientSecret = oauthClientSecret.trim();
+      }
+      await api.writeMCPConfig({ [name.trim()]: config });
+      onSuccess();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to add server");
+    } finally {
+      setAdding(false);
+    }
+  }, [name, url, oauthClientId, oauthClientSecret, onSuccess]);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+      <div className="w-full max-w-md rounded-xl border border-border bg-surface-secondary p-6 shadow-2xl">
+        <h2 className="mb-1 text-base font-semibold text-text">
+          Add custom connector
+        </h2>
+        <p className="mb-5 text-xs text-text-tertiary">
+          Connect opencowork to your data and tools.
+        </p>
+
+        <div className="flex flex-col gap-3">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Name"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none"
+          />
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="Remote MCP server URL"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none"
+          />
+
+          {/* Advanced settings toggle */}
+          <button
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="flex w-fit items-center gap-1.5 text-xs text-text-secondary hover:text-text"
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className={`transition-transform ${showAdvanced ? "" : "rotate-180"}`}
+            >
+              <polyline points="18 15 12 9 6 15" />
+            </svg>
+            Advanced settings
+          </button>
+
+          {showAdvanced && (
+            <div className="flex flex-col gap-3">
+              <input
+                type="text"
+                value={oauthClientId}
+                onChange={(e) => setOauthClientId(e.target.value)}
+                placeholder="OAuth Client ID (optional)"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none"
+              />
+              <input
+                type="password"
+                value={oauthClientSecret}
+                onChange={(e) => setOauthClientSecret(e.target.value)}
+                placeholder="OAuth Client Secret (optional)"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2.5 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none"
+              />
             </div>
           )}
+        </div>
+
+        <p className="mt-4 text-[11px] leading-relaxed text-text-tertiary">
+          Only use connectors from developers you trust. We do not control which
+          tools developers make available and cannot verify that they will work
+          as intended or that they won&apos;t change.
+        </p>
+
+        {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-md px-4 py-1.5 text-xs text-text-secondary hover:bg-surface-hover"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleAdd}
+            disabled={!name.trim() || !url.trim() || adding}
+            className="rounded-md bg-accent px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+          >
+            {adding ? "Adding..." : "Add"}
+          </button>
         </div>
       </div>
     </div>
@@ -1053,31 +2005,37 @@ function ToolsTab({ tools }: { tools: MCPTool[] }) {
                       Parameters
                     </h5>
                     <div className="flex flex-col gap-1.5">
-                      {Object.entries(properties).map(([name, prop]) => (
-                        <div
-                          key={name}
-                          className="rounded-md bg-surface px-3 py-2"
-                        >
-                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                            <code className="font-mono text-xs text-accent">
-                              {name}
-                            </code>
-                            <span className="text-[11px] text-text-tertiary">
-                              {(prop.type as string) || "any"}
-                            </span>
-                            {required.includes(name) && (
-                              <span className="rounded bg-red-500/10 px-1 py-0.5 text-[9px] font-medium text-red-400">
-                                required
+                      {Object.entries(properties).map(([name, prop]) => {
+                        const propInfo = prop as {
+                          type?: string;
+                          description?: string;
+                        };
+                        return (
+                          <div
+                            key={name}
+                            className="rounded-md bg-surface px-3 py-2"
+                          >
+                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                              <code className="font-mono text-xs text-accent">
+                                {name}
+                              </code>
+                              <span className="text-[11px] text-text-tertiary">
+                                {propInfo.type || "any"}
                               </span>
+                              {required.includes(name) && (
+                                <span className="rounded bg-red-500/10 px-1 py-0.5 text-[9px] font-medium text-red-400">
+                                  required
+                                </span>
+                              )}
+                            </div>
+                            {propInfo.description && (
+                              <p className="mt-1 text-xs leading-relaxed text-text-secondary">
+                                {propInfo.description}
+                              </p>
                             )}
                           </div>
-                          {prop.description && (
-                            <p className="mt-1 text-xs leading-relaxed text-text-secondary">
-                              {prop.description as string}
-                            </p>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (

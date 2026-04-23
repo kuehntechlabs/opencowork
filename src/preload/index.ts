@@ -1,5 +1,106 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+export type PluginFormat = "claude" | "codex";
+
+export type PluginSourceDescriptor =
+  | { type: "github"; repo: string; ref?: string }
+  | { type: "url"; url: string; ref?: string }
+  | { type: "local"; path: string };
+
+export interface PluginManifest {
+  name: string;
+  version?: string;
+  description?: string;
+  author?: { name?: string; email?: string; url?: string } | string;
+  homepage?: string;
+  repository?: string;
+  license?: string;
+  keywords?: string[];
+}
+
+export interface PluginComponentItem {
+  name: string;
+  path: string;
+  description?: string;
+}
+
+export interface PluginComponents {
+  skills: PluginComponentItem[];
+  mcpServers: { name: string; config: Record<string, unknown> }[];
+  agents: PluginComponentItem[];
+  commands: PluginComponentItem[];
+  hooks: PluginComponentItem[];
+  lsp: PluginComponentItem[];
+  monitors: PluginComponentItem[];
+}
+
+export interface InstalledPlugin {
+  name: string;
+  source: PluginSourceDescriptor;
+  installedAt: number;
+  format: PluginFormat;
+  manifest: PluginManifest;
+  installDir: string;
+  cloneRoot?: string;
+  subdir?: string;
+  marketplaceName?: string;
+  mirroredSkills: string[];
+  mergedMcpKeys: string[];
+  components: {
+    skills: number;
+    mcpServers: number;
+    agents: number;
+    commands: number;
+    hooks: number;
+    lsp: number;
+    monitors: number;
+  };
+}
+
+export type MarketplaceSourceDescriptor =
+  | { type: "github"; repo: string; ref?: string }
+  | { type: "url"; url: string; ref?: string }
+  | { type: "local"; path: string };
+
+export interface MarketplacePluginSource {
+  source: "github" | "url" | "git-subdir" | "npm" | "local";
+  repo?: string;
+  url?: string;
+  path?: string;
+  ref?: string;
+  sha?: string;
+  package?: string;
+  version?: string;
+}
+
+export interface MarketplacePluginEntry {
+  name: string;
+  description?: string;
+  version?: string;
+  author?: string;
+  category?: string;
+  source: MarketplacePluginSource;
+}
+
+export interface Marketplace {
+  name: string;
+  displayName?: string;
+  addedAt: number;
+  source: MarketplaceSourceDescriptor;
+  marketplaceDir: string;
+  plugins: MarketplacePluginEntry[];
+  error?: string;
+}
+
+export interface MarketplacePluginInspection {
+  entry: MarketplacePluginEntry;
+  inspected: boolean;
+  manifest?: PluginManifest;
+  format?: PluginFormat;
+  inventory?: PluginComponents;
+  error?: string;
+}
+
 const api = {
   getServerUrl: (): Promise<string | null> =>
     ipcRenderer.invoke("get-server-url"),
@@ -8,6 +109,8 @@ const api = {
   showNotification: (title: string, body: string): Promise<void> =>
     ipcRenderer.invoke("show-notification", title, body),
   getPlatform: (): Promise<string> => ipcRenderer.invoke("get-platform"),
+  openInFileManager: (path: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("open-in-file-manager", path),
   onMenuCommand: (callback: (command: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, command: string) =>
       callback(command);
@@ -156,6 +259,104 @@ const api = {
     filePath: string,
   ): Promise<{ type: "text" | "image"; content: string } | null> =>
     ipcRenderer.invoke("read-skill-file", filePath),
+
+  // Create skill from uploaded file (.md, .zip, .skill)
+  createSkillFromFile: (
+    filePath: string,
+  ): Promise<{ ok: boolean; output: string }> =>
+    ipcRenderer.invoke("create-skill-from-file", filePath),
+
+  // Create skill from written instructions
+  createSkillFromInstructions: (
+    name: string,
+    description: string,
+    instructions: string,
+  ): Promise<{ ok: boolean; output: string }> =>
+    ipcRenderer.invoke(
+      "create-skill-from-instructions",
+      name,
+      description,
+      instructions,
+    ),
+
+  // Pick a skill file via native dialog
+  pickSkillFile: (): Promise<string | null> =>
+    ipcRenderer.invoke("pick-skill-file"),
+
+  // Plugins
+  installPlugin: (
+    source:
+      | { type: "github"; repo: string; ref?: string }
+      | { type: "url"; url: string; ref?: string }
+      | { type: "local"; path: string },
+    opts?: { overwrite?: boolean },
+  ): Promise<
+    | {
+        ok: true;
+        plugin: InstalledPlugin;
+        inventory: PluginComponents;
+      }
+    | { ok: false; error: string }
+  > => ipcRenderer.invoke("install-plugin", source, opts),
+  listInstalledPlugins: (): Promise<InstalledPlugin[]> =>
+    ipcRenderer.invoke("list-installed-plugins"),
+  removePlugin: (
+    name: string,
+  ): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("remove-plugin", name),
+  pickPluginFolder: (): Promise<string | null> =>
+    ipcRenderer.invoke("pick-plugin-folder"),
+
+  pathExists: (path: string): Promise<boolean> =>
+    ipcRenderer.invoke("path-exists", path),
+
+  // Marketplaces
+  addMarketplace: (
+    source: MarketplaceSourceDescriptor,
+  ): Promise<
+    { ok: true; marketplace: Marketplace } | { ok: false; error: string }
+  > => ipcRenderer.invoke("add-marketplace", source),
+  listMarketplaces: (): Promise<Marketplace[]> =>
+    ipcRenderer.invoke("list-marketplaces"),
+  removeMarketplace: (
+    name: string,
+  ): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("remove-marketplace", name),
+  refreshMarketplace: (
+    name: string,
+  ): Promise<
+    { ok: true; marketplace: Marketplace } | { ok: false; error: string }
+  > => ipcRenderer.invoke("refresh-marketplace", name),
+  installMarketplacePlugin: (
+    marketplaceName: string,
+    pluginName: string,
+  ): Promise<
+    | {
+        ok: true;
+        plugin: InstalledPlugin;
+        inventory: PluginComponents;
+      }
+    | { ok: false; error: string }
+  > =>
+    ipcRenderer.invoke(
+      "install-marketplace-plugin",
+      marketplaceName,
+      pluginName,
+    ),
+  inspectMarketplacePlugin: (
+    marketplaceName: string,
+    pluginName: string,
+  ): Promise<MarketplacePluginInspection | { error: string }> =>
+    ipcRenderer.invoke(
+      "inspect-marketplace-plugin",
+      marketplaceName,
+      pluginName,
+    ),
+
+  // Pick chat attachments via native dialog — returns base64 data URLs directly
+  pickAttachments: (): Promise<
+    { filename: string; mime: string; url: string; size: number }[]
+  > => ipcRenderer.invoke("pick-attachments"),
 };
 
 contextBridge.exposeInMainWorld("api", api);

@@ -84,6 +84,12 @@ function handleEvent(event: GlobalEvent) {
         payload.properties.sessionID,
         payload.properties.info,
       );
+      if (
+        payload.properties.info.role === "assistant" &&
+        payload.properties.info.time.completed
+      ) {
+        store.loadSessionDiff(payload.properties.sessionID);
+      }
       break;
 
     case "message.removed":
@@ -121,6 +127,26 @@ function handleEvent(event: GlobalEvent) {
 
     case "permission.replied":
       store.removePermissionRequest(payload.properties.requestID);
+      break;
+
+    case "todo.updated":
+      store.upsertTodos(payload.properties.sessionID, payload.properties.todos);
+      break;
+
+    case "lsp.updated":
+      store.loadLspStatus();
+      break;
+
+    case "question.asked":
+      store.upsertPendingQuestion(payload.properties);
+      break;
+
+    case "question.replied":
+    case "question.rejected":
+      store.clearPendingQuestion(
+        payload.properties.sessionID,
+        payload.properties.requestID,
+      );
       break;
   }
 }

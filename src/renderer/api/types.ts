@@ -21,6 +21,12 @@ export interface Session {
     files: number;
   };
   share?: { url: string };
+  revert?: {
+    messageID: string;
+    partID?: string;
+    snapshot?: string;
+    diff?: string;
+  };
 }
 
 export interface UserMessage {
@@ -62,6 +68,7 @@ export interface TextPart {
   messageID: string;
   type: "text";
   text: string;
+  synthetic?: boolean;
   time?: { start: number; end?: number };
 }
 
@@ -149,6 +156,20 @@ export interface FilePart {
   url: string;
 }
 
+export interface TextPartInput {
+  type: "text";
+  text: string;
+}
+
+export interface FilePartInput {
+  type: "file";
+  mime: string;
+  filename?: string;
+  url: string;
+}
+
+export type PromptPartInput = TextPartInput | FilePartInput;
+
 export interface AgentPart {
   id: string;
   sessionID: string;
@@ -185,6 +206,7 @@ export interface Provider {
 export interface Model {
   id: string;
   name: string;
+  variants?: Record<string, unknown>;
   cost?: {
     input: number;
     output: number;
@@ -194,6 +216,24 @@ export interface Model {
     reasoning?: boolean;
     toolcall?: boolean;
   };
+  limit?: {
+    context: number;
+    output: number;
+  };
+}
+
+export type MCPStatus =
+  | { status: "connected" }
+  | { status: "disabled" }
+  | { status: "failed"; error: string }
+  | { status: "needs_auth" }
+  | { status: "needs_client_registration"; error: string };
+
+export interface LspStatus {
+  id: string;
+  name: string;
+  root: string;
+  status: "connected" | "error";
 }
 
 export interface AgentInfo {
@@ -272,10 +312,53 @@ export type ServerEvent =
       properties: { sessionID: string; requestID: string; reply: string };
     }
   | { type: "todo.updated"; properties: { sessionID: string; todos: Todo[] } }
+  | { type: "lsp.updated"; properties: Record<string, unknown> }
+  | { type: "question.asked"; properties: QuestionRequest }
+  | {
+      type: "question.replied";
+      properties: {
+        sessionID: string;
+        requestID: string;
+        answers: string[][];
+      };
+    }
+  | {
+      type: "question.rejected";
+      properties: { sessionID: string; requestID: string };
+    }
   | { type: string; properties: Record<string, unknown> };
 
 export interface Todo {
   content: string;
   status: string;
   priority: string;
+}
+
+export interface FileDiff {
+  file: string;
+  before: string;
+  after: string;
+  additions: number;
+  deletions: number;
+  status?: "added" | "deleted" | "modified";
+}
+
+export interface QuestionOption {
+  label: string;
+  description: string;
+}
+
+export interface QuestionInfo {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiple?: boolean;
+  custom?: boolean;
+}
+
+export interface QuestionRequest {
+  id: string;
+  sessionID: string;
+  questions: QuestionInfo[];
+  tool?: { messageID: string; callID: string };
 }

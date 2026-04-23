@@ -1,4 +1,15 @@
-import type { Session, Message, Part, Provider, AgentInfo } from "./types";
+import type {
+  Session,
+  Message,
+  Part,
+  Provider,
+  AgentInfo,
+  PromptPartInput,
+  FileDiff,
+  MCPStatus,
+  Todo,
+  LspStatus,
+} from "./types";
 import { useServerStore } from "../stores/server-store";
 import { ARTIFACT_SYSTEM_PROMPT } from "../utils/artifact-prompt";
 
@@ -71,6 +82,43 @@ export async function deleteSession(id: string): Promise<void> {
   await request(`/session/${id}`, { method: "DELETE" });
 }
 
+/** List sessions scoped to a specific directory without changing the global scope. */
+export async function listSessionsForDirectory(
+  directory: string,
+): Promise<Session[]> {
+  if (!baseUrl) throw new Error("Server not connected");
+  const res = await fetch(`${baseUrl}/session`, {
+    headers: {
+      "Content-Type": "application/json",
+      "x-opencode-directory": directory,
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`API error ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
+/** Delete a session while passing an explicit directory header. */
+export async function deleteSessionInDirectory(
+  id: string,
+  directory: string,
+): Promise<void> {
+  if (!baseUrl) throw new Error("Server not connected");
+  const res = await fetch(`${baseUrl}/session/${id}`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      "x-opencode-directory": directory,
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`API error ${res.status}: ${text}`);
+  }
+}
+
 export async function updateSession(
   id: string,
   updates: { title?: string; time?: { archived?: number } },
@@ -107,19 +155,25 @@ const injectedSessions = new Set<string>();
 // POST /session/:id/prompt_async sends a prompt and returns immediately (204)
 export async function sendPrompt(
   sessionId: string,
-  parts: Array<{ type: "text"; text: string }>,
+  parts: PromptPartInput[],
   options?: {
     model?: { providerID: string; modelID: string };
     agent?: string;
+    variant?: string;
   },
 ): Promise<void> {
-  // Inject artifact instructions on the first message of each session
-  let actualParts = parts;
+  // Inject artifact instructions on the first text part of each session
+  let actualParts: PromptPartInput[] = parts;
   if (!injectedSessions.has(sessionId) && parts.length > 0) {
     injectedSessions.add(sessionId);
-    actualParts = parts.map((p, i) =>
-      i === 0 ? { ...p, text: ARTIFACT_SYSTEM_PROMPT + p.text } : p,
-    );
+    let injected = false;
+    actualParts = parts.map((p) => {
+      if (!injected && p.type === "text") {
+        injected = true;
+        return { ...p, text: ARTIFACT_SYSTEM_PROMPT + p.text };
+      }
+      return p;
+    });
   }
 
   await fetch(`${baseUrl}/session/${sessionId}/prompt_async`, {
@@ -153,8 +207,15 @@ export async function replyPermission(
 }
 
 // Session revert / unrevert (undo / redo)
-export async function revertSession(sessionId: string): Promise<void> {
-  await request(`/session/${sessionId}/revert`, { method: "POST" });
+export async function revertSession(
+  sessionId: string,
+  messageID: string,
+  partID?: string,
+): Promise<void> {
+  await request(`/session/${sessionId}/revert`, {
+    method: "POST",
+    body: JSON.stringify(partID ? { messageID, partID } : { messageID }),
+  });
 }
 
 export async function unrevertSession(sessionId: string): Promise<void> {
@@ -216,7 +277,7 @@ export async function executeCommand(
     variant?: string;
   },
 ): Promise<void> {
-  await fetch(`${baseUrl}/session/${sessionId}/command`, {
+  const res = await fetch(`${baseUrl}/session/${sessionId}/command`, {
     method: "POST",
     headers: buildHeaders(),
     body: JSON.stringify({
@@ -225,6 +286,11 @@ export async function executeCommand(
       ...options,
     }),
   });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Command API error ${res.status}: ${text}`);
+  }
 }
 
 // Skill API — lists all available skills with their info
@@ -238,6 +304,54 @@ export interface SkillInfo {
 export async function listSkills(): Promise<SkillInfo[]> {
   try {
     return await request<SkillInfo[]>("/skill");
+  } catch {
+    return [];
+  }
+}
+
+// Reply to a question asked by the model via the `question` tool
+export async function replyQuestion(
+  requestId: string,
+  answers: string[][],
+): Promise<void> {
+  await fetch(`${baseUrl}/question/${requestId}/reply`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify({ answers }),
+  });
+}
+
+// MCP status — map of server name to status
+export async function getMCPStatus(): Promise<Record<string, MCPStatus>> {
+  try {
+    return await request<Record<string, MCPStatus>>(`/mcp`);
+  } catch {
+    return {};
+  }
+}
+
+// LSP status — list of language servers and their connectivity
+export async function getLspStatus(): Promise<LspStatus[]> {
+  try {
+    return await request<LspStatus[]>(`/lsp`);
+  } catch {
+    return [];
+  }
+}
+
+// Session todos — the in-session todo list
+export async function getTodos(sessionId: string): Promise<Todo[]> {
+  try {
+    return await request<Todo[]>(`/session/${sessionId}/todo`);
+  } catch {
+    return [];
+  }
+}
+
+// Session diff — cumulative file changes for the session
+export async function getSessionDiff(sessionId: string): Promise<FileDiff[]> {
+  try {
+    return await request<FileDiff[]>(`/session/${sessionId}/diff`);
   } catch {
     return [];
   }

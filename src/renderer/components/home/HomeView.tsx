@@ -6,6 +6,7 @@ import { useServerStore } from "../../stores/server-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useProjectStore } from "../../stores/project-store";
 import { useCurrentAgent } from "../input/ComposerBar";
+import { executeKnownCustomSlashCommand } from "../../utils/slash-command";
 import lampIconUrl from "../../assets/lamp-icon.png";
 
 export function HomeView() {
@@ -13,7 +14,7 @@ export function HomeView() {
   const sendPrompt = useSessionStore((s) => s.sendPrompt);
   const directory = useServerStore((s) => s.directory);
   const connected = useServerStore((s) => s.connected);
-  const { selectedProvider, selectedModel, permissionMode } =
+  const { selectedProvider, selectedModel, selectedVariant, permissionMode } =
     useSettingsStore();
   const agent = useCurrentAgent();
   const [sending, setSending] = useState(false);
@@ -21,29 +22,50 @@ export function HomeView() {
   const setDirectory = useServerStore((s) => s.setDirectory);
   const { addRecentDirectory } = useProjectStore();
 
+  const ensureDirectory = useCallback(async () => {
+    if (directory) return directory;
+    const path = await window.api.openDirectoryPicker();
+    if (!path) return null;
+    setDirectory(path);
+    addRecentDirectory(path);
+    return path;
+  }, [directory, setDirectory, addRecentDirectory]);
+
   const handleSend = useCallback(
     async (text: string) => {
       if (!text.trim() || !connected) return;
 
-      // Default to user home directory if none selected
-      let dir = directory;
-      if (!dir) {
-        const path = await window.api.openDirectoryPicker();
-        if (!path) return;
-        dir = path;
-        setDirectory(dir);
-        addRecentDirectory(dir);
-      }
+      const dir = await ensureDirectory();
+      if (!dir) return;
 
       setSending(true);
       try {
         const action = permissionMode === "bypass" ? "allow" : "ask";
         const session = await createSession(dir, action);
+
+        const modelName =
+          selectedProvider && selectedModel
+            ? `${selectedProvider}/${selectedModel}`
+            : undefined;
+        const ranCustomSlash = await executeKnownCustomSlashCommand({
+          sessionId: session.id,
+          text,
+          model: modelName,
+          variant: selectedVariant ?? undefined,
+        });
+        if (ranCustomSlash) {
+          return;
+        }
+
         const model =
           selectedProvider && selectedModel
             ? { providerID: selectedProvider, modelID: selectedModel }
             : undefined;
-        await sendPrompt(session.id, text, { model, agent });
+        await sendPrompt(session.id, [{ type: "text", text }], {
+          model,
+          agent,
+          variant: selectedVariant ?? undefined,
+        });
       } catch (err) {
         console.error("Failed to create session:", err);
       } finally {
@@ -51,16 +73,15 @@ export function HomeView() {
       }
     },
     [
-      directory,
       connected,
+      ensureDirectory,
       createSession,
       sendPrompt,
       selectedProvider,
       selectedModel,
+      selectedVariant,
       permissionMode,
       agent,
-      setDirectory,
-      addRecentDirectory,
     ],
   );
 

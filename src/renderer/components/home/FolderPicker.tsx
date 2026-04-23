@@ -93,7 +93,7 @@ export function FolderPicker() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute top-full left-0 z-50 mt-2 w-80 rounded-lg border border-border bg-surface-secondary shadow-lg">
+        <div className="absolute top-full left-0 z-50 mt-2 flex max-h-[min(32rem,calc(100vh-6rem))] w-80 flex-col overflow-y-auto overscroll-contain rounded-lg border border-border bg-surface-secondary shadow-lg">
           {!showProjects ? (
             <>
               {/* Current directory */}

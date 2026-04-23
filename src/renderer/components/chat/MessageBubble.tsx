@@ -1,8 +1,10 @@
-import type { Message, AssistantMessage } from "../../api/types";
+import { useMemo, useState } from "react";
+import type { Message, AssistantMessage, TextPart } from "../../api/types";
 import { useSessionStore } from "../../stores/session-store";
 import { TextContent } from "./TextContent";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { ToolCallBlock } from "./ToolCallBlock";
+import { ImageLightbox } from "./ImageLightbox";
 
 interface Props {
   message: Message;
@@ -12,7 +14,33 @@ const emptyParts: never[] = [];
 
 export function MessageBubble({ message }: Props) {
   const isUser = message.role === "user";
-  const parts = useSessionStore((s) => s.parts[message.id]) ?? emptyParts;
+  const [lightbox, setLightbox] = useState<{
+    src: string;
+    alt?: string;
+  } | null>(null);
+  const allParts = useSessionStore((s) => s.parts[message.id]) ?? emptyParts;
+  const syntheticText = allParts.find(
+    (p) => p.type === "text" && (p as TextPart).synthetic,
+  ) as TextPart | undefined;
+  // For user messages, filter out synthetic parts (e.g. expanded skill templates)
+  const parts = useMemo(
+    () =>
+      isUser
+        ? allParts.filter(
+            (p) => p.type !== "text" || !(p as TextPart).synthetic,
+          )
+        : allParts,
+    [isUser, allParts],
+  );
+
+  const syntheticCommand = syntheticText?.text
+    .trimStart()
+    .match(/^\/(\S+)/)?.[1]
+    ?.toLowerCase();
+
+  if (isUser && parts.length === 0 && syntheticCommand === "init") {
+    return null;
+  }
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -23,10 +51,21 @@ export function MessageBubble({ message }: Props) {
             : "bg-surface-secondary text-text"
         }`}
       >
-        {/* User messages - show text from first text part or indicate it's a prompt */}
-        {isUser && parts.length === 0 && (
-          <span className="text-sm opacity-70">Sent a message</span>
-        )}
+        {/* User messages - show command name if all text was synthetic, or fallback */}
+        {isUser &&
+          parts.length === 0 &&
+          (() => {
+            if (syntheticText) {
+              // Extract command name from the beginning of the synthetic text
+              const match = syntheticText.text.match(/^\/(\S+)/);
+              return (
+                <span className="text-sm font-medium opacity-90">
+                  /{match ? match[1] : "command"}
+                </span>
+              );
+            }
+            return <span className="text-sm opacity-70">Sent a message</span>;
+          })()}
 
         {/* Render parts */}
         {parts.map((part) => {
@@ -57,6 +96,25 @@ export function MessageBubble({ message }: Props) {
                 </div>
               );
             case "file":
+              if (part.mime?.startsWith("image/")) {
+                return (
+                  <button
+                    key={part.id}
+                    type="button"
+                    onClick={() =>
+                      setLightbox({ src: part.url, alt: part.filename })
+                    }
+                    className="my-1 block rounded-md"
+                    title={part.filename}
+                  >
+                    <img
+                      src={part.url}
+                      alt={part.filename || "image"}
+                      className="h-24 w-24 rounded-md border border-border/40 object-cover transition-opacity hover:opacity-80"
+                    />
+                  </button>
+                );
+              }
               return (
                 <div
                   key={part.id}
@@ -128,6 +186,13 @@ export function MessageBubble({ message }: Props) {
             );
           })()}
       </div>
+      {lightbox && (
+        <ImageLightbox
+          src={lightbox.src}
+          alt={lightbox.alt}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   );
 }

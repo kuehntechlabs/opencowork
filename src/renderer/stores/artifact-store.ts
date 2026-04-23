@@ -14,6 +14,8 @@ export interface Artifact {
   createdAt: number;
   /** True while the artifact is still streaming (content incomplete) */
   loading?: boolean;
+  /** ID of the assistant message that produced this artifact */
+  createdByMessageId?: string;
 }
 
 interface ArtifactState {
@@ -31,7 +33,7 @@ interface ArtifactState {
   setPanelWidth: (width: number) => void;
   setViewMode: (mode: "preview" | "code") => void;
   clearSessionArtifacts: (sessionId: string) => void;
-  syncToSession: (sessionId: string) => void;
+  syncToSession: (sessionId: string, latestAssistantMessageId?: string) => void;
   updateArtifactContent: (id: string, content: string) => void;
   setArtifactLoading: (id: string, loading: boolean) => void;
 }
@@ -53,11 +55,17 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
   addArtifact: (artifact) => {
     const id = generateId();
     const full: Artifact = { ...artifact, id, createdAt: Date.now() };
-    set((s) => ({
-      artifacts: { ...s.artifacts, [id]: full },
-      activeArtifactId: id,
-      panelOpen: true,
-    }));
+    set((s) => {
+      // Only auto-open the right panel once the artifact is fully built.
+      // While streaming (loading: true) we track it silently and pop the
+      // panel on the loading→done transition via `setArtifactLoading`.
+      const reveal = !artifact.loading;
+      return {
+        artifacts: { ...s.artifacts, [id]: full },
+        activeArtifactId: reveal ? id : s.activeArtifactId,
+        panelOpen: reveal ? true : s.panelOpen,
+      };
+    });
     return id;
   },
 
@@ -105,17 +113,26 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
       };
     }),
 
-  syncToSession: (sessionId) =>
+  syncToSession: (sessionId, latestAssistantMessageId) =>
     set((s) => {
-      // Find the most recent artifact belonging to this session
       const sessionArtifacts = Object.values(s.artifacts)
         .filter((a) => a.sessionId === sessionId)
         .sort((a, b) => b.createdAt - a.createdAt);
 
-      if (sessionArtifacts.length > 0) {
-        return { activeArtifactId: sessionArtifacts[0].id };
+      if (sessionArtifacts.length === 0) {
+        return { activeArtifactId: null, panelOpen: false };
       }
-      // No artifacts for this session — close the panel
+
+      const latest = sessionArtifacts[0];
+      // Only auto-activate when the most recent artifact was produced by the
+      // latest assistant message AND isn't still streaming.
+      if (
+        latestAssistantMessageId &&
+        latest.createdByMessageId === latestAssistantMessageId &&
+        !latest.loading
+      ) {
+        return { activeArtifactId: latest.id };
+      }
       return { activeArtifactId: null, panelOpen: false };
     }),
 
@@ -132,8 +149,14 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
     set((s) => {
       const existing = s.artifacts[id];
       if (!existing) return {};
+      // When the artifact transitions from streaming → done, reveal it on
+      // the right: activate it and open the panel.
+      const justFinished = existing.loading === true && loading === false;
       return {
         artifacts: { ...s.artifacts, [id]: { ...existing, loading } },
+        ...(justFinished
+          ? { activeArtifactId: id, panelOpen: true }
+          : {}),
       };
     }),
 }));
