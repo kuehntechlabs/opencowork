@@ -152,7 +152,7 @@ if (savedVariantByModelRaw) {
     savedVariantByModel = {};
   }
 }
-if (savedVariantByModel && typeof savedVariantByModel === "object") {
+if (typeof savedVariantByModel === "object") {
   useSettingsStore.setState({ variantByModel: savedVariantByModel });
 }
 if (savedProvider && savedModel) {
