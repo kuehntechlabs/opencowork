@@ -36,7 +36,6 @@ export function useArtifactDetector(sessionId: string) {
     const unsubscribe = useSessionStore.subscribe((state) => {
       const messages = state.messages[sessionId] ?? [];
       const assistantMsgs = messages.filter((m) => m.role === "assistant");
-      const latestAssistantId = assistantMsgs[assistantMsgs.length - 1]?.id;
 
       for (const msg of assistantMsgs) {
         const parts = state.parts[msg.id] ?? [];
