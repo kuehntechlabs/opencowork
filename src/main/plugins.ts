@@ -455,7 +455,6 @@ export async function installPluginFromSource(
       source.type === "local" && Boolean(opts.marketplaceName);
 
     if (source.type === "local" && !isMarketplaceLocal) {
-      finalRootDir = rootDir;
       installDir = pluginDirInRoot;
     } else if (isMarketplaceLocal) {
       // Copy just the plugin subtree to a self-contained dir; drop the subdir.
