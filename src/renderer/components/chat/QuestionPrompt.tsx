@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { QuestionRequest } from "../../api/types";
 import * as api from "../../api/client";
+import { useSessionStore } from "../../stores/session-store";
 
 interface Props {
   request: QuestionRequest;
@@ -10,6 +11,9 @@ type Selections = Record<number, Set<string>>;
 type CustomAnswers = Record<number, string>;
 
 export function QuestionPrompt({ request }: Props) {
+  const directory = useSessionStore(
+    (s) => s.sessions[request.sessionID]?.directory,
+  );
   const [selected, setSelected] = useState<Selections>({});
   const [custom, setCustom] = useState<CustomAnswers>({});
   const [submitting, setSubmitting] = useState(false);
@@ -47,7 +51,7 @@ export function QuestionPrompt({ request }: Props) {
     setSubmitting(true);
     setError(null);
     try {
-      await api.replyQuestion(request.id, buildAnswers());
+      await api.replyQuestion(request.id, buildAnswers(), directory);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send answer");
       setSubmitting(false);

@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { AppLayout } from "./components/layout/AppLayout";
 import { setBaseUrl, checkHealth } from "./api/client";
-import { connectSSE, disconnectSSE } from "./api/events";
+import {
+  connectSSE,
+  disconnectSSE,
+  isSSEDirectoryScoped,
+} from "./api/events";
 import { useServerStore } from "./stores/server-store";
 import { useSessionStore } from "./stores/session-store";
 import { Spinner } from "./components/common/Spinner";
@@ -65,13 +69,15 @@ export function App() {
     };
   }, []);
 
-  // Load sessions and reconnect SSE when connected and directory changes
+  // Load sessions for the selected directory. SSE normally stays unfiltered;
+  // if OpenCode rejects that stream, reconnect the directory-scoped fallback.
   useEffect(() => {
     if (connected) {
       loadSessions();
-      // Reconnect SSE so it picks up the new directory
-      disconnectSSE();
-      connectSSE();
+      if (isSSEDirectoryScoped()) {
+        disconnectSSE();
+        connectSSE();
+      }
     }
   }, [connected, directory, loadSessions]);
 

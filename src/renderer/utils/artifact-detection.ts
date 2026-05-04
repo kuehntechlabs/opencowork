@@ -1,6 +1,7 @@
 import type { ArtifactType } from "../stores/artifact-store";
 
-const LOCALHOST_RE = /https?:\/\/localhost:\d+/g;
+const LOCALHOST_RE =
+  /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+(?:\/[^\s"'`<>)\]}]*)?/g;
 const NOTEBOOK_PATH_RE = /[^\s"']+\.ipynb/g;
 
 const ARTIFACT_LANGUAGES = new Set(["html", "jsx", "tsx", "svg"]);
@@ -15,7 +16,29 @@ export function isReactLanguage(lang: string): boolean {
 }
 
 export function detectLocalhostUrls(text: string): string[] {
-  return [...text.matchAll(LOCALHOST_RE)].map((m) => m[0]);
+  return [...new Set([...text.matchAll(LOCALHOST_RE)].map((m) => m[0]))];
+}
+
+export function choosePreviewUrl(
+  text: string,
+  excludedBaseUrl?: string | null,
+): string | null {
+  const urls = [...text.matchAll(LOCALHOST_RE)].map((m) => ({
+    url: m[0],
+    index: m.index ?? 0,
+  }));
+  const excludedOrigin = getOrigin(excludedBaseUrl);
+
+  const candidates = urls
+    .filter(({ url }) => !excludedOrigin || getOrigin(url) !== excludedOrigin)
+    .map(({ url, index }) => ({
+      url,
+      score: scorePreviewUrl(url, text, index),
+    }));
+
+  candidates.sort((a, b) => b.score - a.score);
+  const best = candidates[0];
+  return best && best.score >= 3 ? best.url : null;
 }
 
 export function detectNotebookPaths(text: string): string[] {
@@ -131,6 +154,69 @@ function getAttr(attrs: string, name: string): string | null {
   const re = new RegExp(`${name}=["']([^"']*)["']`);
   const m = re.exec(attrs);
   return m ? m[1] : null;
+}
+
+function getOrigin(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+function scorePreviewUrl(url: string, text: string, index: number): number {
+  let score = 0;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return -100;
+  }
+
+  const pathname = parsed.pathname.toLowerCase();
+  const href = parsed.href.toLowerCase();
+  const context = text.slice(
+    Math.max(0, index - 120),
+    index + url.length + 120,
+  );
+  const lowerContext = context.toLowerCase();
+
+  if (pathname === "/" || pathname === "") score += 8;
+  if (/\.(html?|xhtml)$/.test(pathname)) score += 6;
+  const frontendContext =
+    /(frontend|vite|next|webpack|parcel|preview|browser|html|ui|app)/.test(
+      lowerContext,
+    );
+  const backendContext = /(api|backend|server|health|json|endpoint|log)/.test(
+    lowerContext,
+  );
+
+  if (
+    /(frontend|vite|next|webpack|parcel|preview|browser|html|ui|app)/.test(
+      href,
+    )
+  ) {
+    score += 5;
+  }
+  if (frontendContext) score += 5;
+  if (
+    /(local|ready|available|open|view|running at|served at)/.test(
+      lowerContext,
+    )
+  ) {
+    score += 3;
+  }
+
+  if (pathname.startsWith("/api") || pathname.includes("/api/")) score -= 12;
+  if (pathname === "/health" || pathname.includes("/health")) score -= 12;
+  if (/\.(json|xml|txt|log)$/.test(pathname)) score -= 10;
+  if (backendContext) {
+    score -= 6;
+  }
+  if (backendContext && !frontendContext) score -= 6;
+
+  return score;
 }
 
 function inferType(rawType: string, content: string): ArtifactType {

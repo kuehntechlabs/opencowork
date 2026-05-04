@@ -71,10 +71,13 @@ export const useArtifactStore = create<ArtifactState>((set, get) => ({
 
   removeArtifact: (id) =>
     set((s) => {
+      const removed = s.artifacts[id];
       const { [id]: _, ...rest } = s.artifacts;
       const newActive =
         s.activeArtifactId === id
-          ? (Object.keys(rest)[0] ?? null)
+          ? (Object.values(rest)
+              .filter((artifact) => artifact.sessionId === removed?.sessionId)
+              .sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null)
           : s.activeArtifactId;
       return {
         artifacts: rest,

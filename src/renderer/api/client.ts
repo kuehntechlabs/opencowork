@@ -27,24 +27,31 @@ function getDirectory(): string | undefined {
   return useServerStore.getState().directory || undefined;
 }
 
-function buildHeaders(extra?: Record<string, string>): Record<string, string> {
+function buildHeaders(
+  extra?: Record<string, string>,
+  directory?: string | null,
+): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...extra,
   };
-  const dir = getDirectory();
+  const dir = directory === undefined ? getDirectory() : directory || undefined;
   if (dir) {
     headers["x-opencode-directory"] = dir;
   }
   return headers;
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  directory?: string | null,
+): Promise<T> {
   if (!baseUrl) throw new Error("Server not connected");
 
   const res = await fetch(`${baseUrl}${path}`, {
     ...options,
-    headers: buildHeaders(options.headers as Record<string, string>),
+    headers: buildHeaders(options.headers as Record<string, string>, directory),
   });
 
   if (!res.ok) {
@@ -52,7 +59,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new Error(`API error ${res.status}: ${text}`);
   }
 
-  return res.json();
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  return text ? JSON.parse(text) : (undefined as T);
 }
 
 // Session API
@@ -72,32 +81,28 @@ export async function createSession(
     permissionAction === "allow"
       ? [{ permission: "*", pattern: "*", action: "allow" as const }]
       : undefined;
-  return request("/session", {
-    method: "POST",
-    body: JSON.stringify({ permission }),
-  });
+  return request(
+    "/session",
+    {
+      method: "POST",
+      body: JSON.stringify({ permission }),
+    },
+    directory,
+  );
 }
 
-export async function deleteSession(id: string): Promise<void> {
-  await request(`/session/${id}`, { method: "DELETE" });
+export async function deleteSession(
+  id: string,
+  directory?: string,
+): Promise<void> {
+  await request(`/session/${id}`, { method: "DELETE" }, directory);
 }
 
 /** List sessions scoped to a specific directory without changing the global scope. */
 export async function listSessionsForDirectory(
   directory: string,
 ): Promise<Session[]> {
-  if (!baseUrl) throw new Error("Server not connected");
-  const res = await fetch(`${baseUrl}/session`, {
-    headers: {
-      "Content-Type": "application/json",
-      "x-opencode-directory": directory,
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`API error ${res.status}: ${text}`);
-  }
-  return res.json();
+  return request("/session", {}, directory);
 }
 
 /** Delete a session while passing an explicit directory header. */
@@ -122,23 +127,32 @@ export async function deleteSessionInDirectory(
 export async function updateSession(
   id: string,
   updates: { title?: string; time?: { archived?: number } },
+  directory?: string,
 ): Promise<Session> {
-  return request(`/session/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(updates),
-  });
+  return request(
+    `/session/${id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(updates),
+    },
+    directory,
+  );
 }
 
-export async function abortSession(id: string): Promise<void> {
-  await request(`/session/${id}/abort`, { method: "POST" });
+export async function abortSession(
+  id: string,
+  directory?: string,
+): Promise<void> {
+  await request(`/session/${id}/abort`, { method: "POST" }, directory);
 }
 
 // Message API
 // GET /session/:id/message returns MessageV2.WithParts[] = { info, parts }[]
 export async function getMessages(
   sessionId: string,
+  directory?: string,
 ): Promise<Array<{ info: Message; parts: Part[] }>> {
-  return request(`/session/${sessionId}/message`);
+  return request(`/session/${sessionId}/message`, {}, directory);
 }
 
 // GET /session/:id/message/:messageId returns { info, parts }
@@ -161,7 +175,9 @@ export async function sendPrompt(
     agent?: string;
     variant?: string;
   },
+  directory?: string,
 ): Promise<void> {
+  if (!baseUrl) throw new Error("Server not connected");
   // Inject artifact instructions on the first text part of each session
   let actualParts: PromptPartInput[] = parts;
   if (!injectedSessions.has(sessionId) && parts.length > 0) {
@@ -176,14 +192,19 @@ export async function sendPrompt(
     });
   }
 
-  await fetch(`${baseUrl}/session/${sessionId}/prompt_async`, {
+  const res = await fetch(`${baseUrl}/session/${sessionId}/prompt_async`, {
     method: "POST",
-    headers: buildHeaders(),
+    headers: buildHeaders(undefined, directory),
     body: JSON.stringify({
       parts: actualParts,
       ...options,
     }),
   });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Prompt API error ${res.status}: ${text}`);
+  }
 }
 
 // Provider API
@@ -199,11 +220,16 @@ export async function listProviders(): Promise<{
 export async function replyPermission(
   requestId: string,
   reply: "once" | "always" | "reject",
+  directory?: string,
 ): Promise<void> {
-  await request(`/permission/${requestId}/reply`, {
-    method: "POST",
-    body: JSON.stringify({ reply }),
-  });
+  await request(
+    `/permission/${requestId}/reply`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reply }),
+    },
+    directory,
+  );
 }
 
 // Session revert / unrevert (undo / redo)
@@ -211,15 +237,27 @@ export async function revertSession(
   sessionId: string,
   messageID: string,
   partID?: string,
+  directory?: string,
 ): Promise<void> {
-  await request(`/session/${sessionId}/revert`, {
-    method: "POST",
-    body: JSON.stringify(partID ? { messageID, partID } : { messageID }),
-  });
+  await request(
+    `/session/${sessionId}/revert`,
+    {
+      method: "POST",
+      body: JSON.stringify(partID ? { messageID, partID } : { messageID }),
+    },
+    directory,
+  );
 }
 
-export async function unrevertSession(sessionId: string): Promise<void> {
-  await request(`/session/${sessionId}/unrevert`, { method: "POST" });
+export async function unrevertSession(
+  sessionId: string,
+  directory?: string,
+): Promise<void> {
+  await request(
+    `/session/${sessionId}/unrevert`,
+    { method: "POST" },
+    directory,
+  );
 }
 
 // Session summarize (compact)
@@ -227,11 +265,16 @@ export async function summarizeSession(
   sessionId: string,
   providerID: string,
   modelID: string,
+  directory?: string,
 ): Promise<void> {
-  await request(`/session/${sessionId}/summarize`, {
-    method: "POST",
-    body: JSON.stringify({ providerID, modelID }),
-  });
+  await request(
+    `/session/${sessionId}/summarize`,
+    {
+      method: "POST",
+      body: JSON.stringify({ providerID, modelID }),
+    },
+    directory,
+  );
 }
 
 // Session share / unshare
@@ -276,10 +319,12 @@ export async function executeCommand(
     model?: string;
     variant?: string;
   },
+  directory?: string,
 ): Promise<void> {
+  if (!baseUrl) throw new Error("Server not connected");
   const res = await fetch(`${baseUrl}/session/${sessionId}/command`, {
     method: "POST",
-    headers: buildHeaders(),
+    headers: buildHeaders(undefined, directory),
     body: JSON.stringify({
       command,
       arguments: args,
@@ -313,12 +358,18 @@ export async function listSkills(): Promise<SkillInfo[]> {
 export async function replyQuestion(
   requestId: string,
   answers: string[][],
+  directory?: string,
 ): Promise<void> {
-  await fetch(`${baseUrl}/question/${requestId}/reply`, {
+  if (!baseUrl) throw new Error("Server not connected");
+  const res = await fetch(`${baseUrl}/question/${requestId}/reply`, {
     method: "POST",
-    headers: buildHeaders(),
+    headers: buildHeaders(undefined, directory),
     body: JSON.stringify({ answers }),
   });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Question API error ${res.status}: ${text}`);
+  }
 }
 
 // MCP status — map of server name to status
@@ -340,18 +391,28 @@ export async function getLspStatus(): Promise<LspStatus[]> {
 }
 
 // Session todos — the in-session todo list
-export async function getTodos(sessionId: string): Promise<Todo[]> {
+export async function getTodos(
+  sessionId: string,
+  directory?: string,
+): Promise<Todo[]> {
   try {
-    return await request<Todo[]>(`/session/${sessionId}/todo`);
+    return await request<Todo[]>(`/session/${sessionId}/todo`, {}, directory);
   } catch {
     return [];
   }
 }
 
 // Session diff — cumulative file changes for the session
-export async function getSessionDiff(sessionId: string): Promise<FileDiff[]> {
+export async function getSessionDiff(
+  sessionId: string,
+  directory?: string,
+): Promise<FileDiff[]> {
   try {
-    return await request<FileDiff[]>(`/session/${sessionId}/diff`);
+    return await request<FileDiff[]>(
+      `/session/${sessionId}/diff`,
+      {},
+      directory,
+    );
   } catch {
     return [];
   }

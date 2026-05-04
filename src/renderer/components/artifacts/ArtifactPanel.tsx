@@ -49,7 +49,12 @@ export function ArtifactPanel() {
       case "react":
         return <ReactArtifactRenderer content={artifact.content ?? ""} />;
       case "browser":
-        return <BrowserPreview url={artifact.url ?? "http://localhost:3000"} />;
+        return (
+          <BrowserPreview
+            artifactId={artifact.id}
+            url={artifact.url ?? "http://localhost:3000"}
+          />
+        );
       case "notebook":
         return <NotebookRenderer filePath={artifact.filePath ?? ""} />;
       default:

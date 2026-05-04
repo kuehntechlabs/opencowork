@@ -3,7 +3,8 @@ import type { ToolPart } from "../../api/types";
 import { Spinner } from "../common/Spinner";
 import { useArtifactStore } from "../../stores/artifact-store";
 import { useSessionStore } from "../../stores/session-store";
-import { detectLocalhostUrls } from "../../utils/artifact-detection";
+import { getBaseUrl } from "../../api/client";
+import { choosePreviewUrl } from "../../utils/artifact-detection";
 import { QuestionPrompt } from "./QuestionPrompt";
 
 interface Props {
@@ -85,6 +86,10 @@ export function ToolCallBlock({ part }: Props) {
   const hasOutput =
     (state.status === "completed" && state.output) ||
     (state.status === "error" && state.error);
+  const previewUrl =
+    state.status === "completed" && state.output
+      ? choosePreviewUrl(state.output, getBaseUrl())
+      : null;
 
   return (
     <div className="my-1 rounded-lg border border-border/40 bg-surface-tertiary/20">
@@ -135,18 +140,15 @@ export function ToolCallBlock({ part }: Props) {
                 <span className="text-[10px] font-semibold uppercase text-text-tertiary">
                   Output
                 </span>
-                {detectLocalhostUrls(state.output).length > 0 && (
+                {previewUrl && (
                   <button
                     onClick={() => {
-                      const urls = detectLocalhostUrls(state.output);
-                      if (urls[0]) {
-                        addArtifact({
-                          type: "browser",
-                          title: urls[0],
-                          url: urls[0],
-                          sessionId: part.sessionID,
-                        });
-                      }
+                      addArtifact({
+                        type: "browser",
+                        title: previewUrl,
+                        url: previewUrl,
+                        sessionId: part.sessionID,
+                      });
                     }}
                     className="text-[10px] text-accent hover:text-accent-hover"
                   >

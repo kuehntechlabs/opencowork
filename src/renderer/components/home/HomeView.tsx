@@ -33,10 +33,10 @@ export function HomeView() {
 
   const handleSend = useCallback(
     async (text: string) => {
-      if (!text.trim() || !connected) return;
+      if (!text.trim() || !connected) return false;
 
       const dir = await ensureDirectory();
-      if (!dir) return;
+      if (!dir) return false;
 
       setSending(true);
       try {
@@ -52,9 +52,10 @@ export function HomeView() {
           text,
           model: modelName,
           variant: selectedVariant ?? undefined,
+          directory: session.directory,
         });
         if (ranCustomSlash) {
-          return;
+          return true;
         }
 
         const model =
@@ -66,8 +67,10 @@ export function HomeView() {
           agent,
           variant: selectedVariant ?? undefined,
         });
+        return true;
       } catch (err) {
         console.error("Failed to create session:", err);
+        return false;
       } finally {
         setSending(false);
       }
@@ -132,6 +135,7 @@ export function HomeView() {
         <div className="w-full">
           <MessageInput
             onSend={handleSend}
+            draftKey="home"
             disabled={!connected || sending}
             placeholder={
               !connected

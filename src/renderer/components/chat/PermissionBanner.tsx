@@ -10,6 +10,7 @@ interface Props {
 
 export function PermissionBanner({ sessionId }: Props) {
   const requests = useSessionStore((s) => s.permissionRequests);
+  const directory = useSessionStore((s) => s.sessions[sessionId]?.directory);
   const removeRequest = useSessionStore((s) => s.removePermissionRequest);
   const permissionMode = useSettingsStore((s) => s.permissionMode);
 
@@ -23,7 +24,7 @@ export function PermissionBanner({ sessionId }: Props) {
     if (permissionMode === "bypass") {
       // Auto-approve all
       for (const req of pending) {
-        replyPermission(req.id, "always")
+        replyPermission(req.id, "always", directory)
           .then(() => removeRequest(req.id))
           .catch(() => {});
       }
@@ -39,7 +40,7 @@ export function PermissionBanner({ sessionId }: Props) {
           perm.includes("grep") ||
           perm.includes("list");
         if (isFileOp) {
-          replyPermission(req.id, "always")
+          replyPermission(req.id, "always", directory)
             .then(() => removeRequest(req.id))
             .catch(() => {});
         }
@@ -47,12 +48,12 @@ export function PermissionBanner({ sessionId }: Props) {
     } else if (permissionMode === "plan") {
       // Auto-reject all (plan only)
       for (const req of pending) {
-        replyPermission(req.id, "reject")
+        replyPermission(req.id, "reject", directory)
           .then(() => removeRequest(req.id))
           .catch(() => {});
       }
     }
-  }, [pending.length, permissionMode]);
+  }, [pending.length, permissionMode, directory]);
 
   // In bypass/plan mode, don't show the banner
   if (
@@ -67,7 +68,7 @@ export function PermissionBanner({ sessionId }: Props) {
     reply: "once" | "always" | "reject",
   ) => {
     try {
-      await replyPermission(req.id, reply);
+      await replyPermission(req.id, reply, directory);
       removeRequest(req.id);
     } catch (err) {
       console.error("Failed to reply permission:", err);

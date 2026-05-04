@@ -8,6 +8,7 @@ import {
 import { useSettingsStore } from "../../stores/settings-store";
 import { useSessionStore } from "../../stores/session-store";
 import { useServerStore } from "../../stores/server-store";
+import { useDraftStore } from "../../stores/draft-store";
 import * as api from "../../api/client";
 import type { FilePartInput } from "../../api/types";
 
@@ -17,7 +18,11 @@ interface Attachment extends FilePartInput {
 }
 
 interface Props {
-  onSend: (text: string, attachments?: FilePartInput[]) => void;
+  onSend: (
+    text: string,
+    attachments?: FilePartInput[],
+  ) => void | boolean | Promise<void | boolean>;
+  draftKey?: string;
   disabled?: boolean;
   placeholder?: string;
   showComposerBar?: boolean;
@@ -64,13 +69,13 @@ function formatSize(bytes: number): string {
 
 export function MessageInput({
   onSend,
+  draftKey,
   disabled,
   placeholder,
   showComposerBar = true,
   isBusy,
   onAbort,
 }: Props) {
-  const [text, setText] = useState("");
   const [slashActive, setSlashActive] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -83,7 +88,18 @@ export function MessageInput({
   const { selectedProvider, selectedModel, selectedVariant } =
     useSettingsStore();
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
+  const activeSessionDirectory = useSessionStore((s) =>
+    s.activeSessionId ? s.sessions[s.activeSessionId]?.directory : undefined,
+  );
   const connected = useServerStore((s) => s.connected);
+  const effectiveDraftKey = draftKey ?? activeSessionId ?? "home";
+  const text = useDraftStore((s) => s.drafts[effectiveDraftKey] ?? "");
+  const setDraft = useDraftStore((s) => s.setDraft);
+  const clearDraft = useDraftStore((s) => s.clearDraft);
+  const setText = useCallback(
+    (next: string) => setDraft(effectiveDraftKey, next),
+    [effectiveDraftKey, setDraft],
+  );
 
   const cyclePermissionMode = useCallback(
     (direction: 1 | -1 = 1) => {
@@ -103,17 +119,30 @@ export function MessageInput({
         selectedProvider && selectedModel
           ? `${selectedProvider}/${selectedModel}`
           : undefined;
-      await api
-        .executeCommand(activeSessionId, command, args, {
-          model,
-          variant: selectedVariant ?? undefined,
-        })
-        .catch((err) => {
-          console.error("Command execution failed:", err);
-        });
+      try {
+        await api.executeCommand(
+          activeSessionId,
+          command,
+          args,
+          {
+            model,
+            variant: selectedVariant ?? undefined,
+          },
+          activeSessionDirectory,
+        );
+      } catch (err) {
+        console.error("Command execution failed:", err);
+        return false;
+      }
       return true;
     },
-    [activeSessionId, selectedProvider, selectedModel, selectedVariant],
+    [
+      activeSessionId,
+      activeSessionDirectory,
+      selectedProvider,
+      selectedModel,
+      selectedVariant,
+    ],
   );
 
   const { filterCommands, executeSlashText } = useSlashCommands({
@@ -185,31 +214,34 @@ export function MessageInput({
     [filteredCommands],
   );
 
-  const handleSlashSelect = useCallback((cmd: SlashCommand) => {
-    if (cmd.type === "custom") {
-      // Custom commands (skills): insert trigger text, let user press Enter to send
-      setText(`/${cmd.trigger} `);
-      if (textareaRef.current) {
-        textareaRef.current.focus();
+  const handleSlashSelect = useCallback(
+    (cmd: SlashCommand) => {
+      if (cmd.type === "custom") {
+        // Custom commands (skills): insert trigger text, let user press Enter to send
+        setText(`/${cmd.trigger} `);
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+        }
+      } else {
+        // Built-in commands (model, agent, etc.): execute immediately
+        void cmd.onSelect("");
+        setText("");
+        if (textareaRef.current) {
+          textareaRef.current.style.height = "auto";
+          textareaRef.current.focus();
+        }
       }
-    } else {
-      // Built-in commands (model, agent, etc.): execute immediately
-      void cmd.onSelect("");
-      setText("");
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
-        textareaRef.current.focus();
-      }
-    }
-  }, []);
+    },
+    [setText],
+  );
 
   const clearInput = useCallback(() => {
-    setText("");
+    clearDraft(effectiveDraftKey);
     setAttachments([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, []);
+  }, [clearDraft, effectiveDraftKey]);
 
   const hasContent = text.trim().length > 0 || attachments.length > 0;
 
@@ -236,20 +268,30 @@ export function MessageInput({
     );
 
     if (text.trimStart().startsWith("/") && attachments.length === 0) {
-      void executeSlashText(text).then((handled) => {
-        if (handled) {
-          clearInput();
-          return;
-        }
-        onSend(text.trim(), fileParts);
-        clearInput();
-      });
+      void executeSlashText(text)
+        .then((handled) => {
+          if (handled) {
+            clearInput();
+            return;
+          }
+          void Promise.resolve(onSend(text.trim(), fileParts))
+            .then((sent) => {
+              if (sent !== false) clearInput();
+            })
+            .catch((err) => console.error("Send failed:", err));
+        })
+        .catch((err) => {
+          console.error("Slash command failed:", err);
+        });
       return;
     }
 
     // Send plain prompts to parent
-    onSend(text.trim(), fileParts);
-    clearInput();
+    void Promise.resolve(onSend(text.trim(), fileParts))
+      .then((sent) => {
+        if (sent !== false) clearInput();
+      })
+      .catch((err) => console.error("Send failed:", err));
   }, [
     hasContent,
     text,
@@ -261,6 +303,7 @@ export function MessageInput({
     filteredCommands,
     onSend,
     clearInput,
+    setText,
   ]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

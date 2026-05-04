@@ -5,6 +5,11 @@ import { useServerStore } from "../stores/server-store";
 
 let eventSource: EventSource | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let streamMode: "all" | "directory" = "all";
+
+export function isSSEDirectoryScoped() {
+  return streamMode === "directory";
+}
 
 export function connectSSE() {
   const url = getBaseUrl();
@@ -12,14 +17,19 @@ export function connectSSE() {
 
   disconnectSSE();
 
+  let opened = false;
   const directory = useServerStore.getState().directory;
   const params = new URLSearchParams();
-  if (directory) params.set("directory", directory);
-
-  const sseUrl = `${url}/global/event${params.toString() ? "?" + params.toString() : ""}`;
+  if (streamMode === "directory" && directory) {
+    params.set("directory", directory);
+  }
+  const sseUrl = `${url}/global/event${
+    params.toString() ? "?" + params.toString() : ""
+  }`;
   eventSource = new EventSource(sseUrl);
 
   eventSource.onopen = () => {
+    opened = true;
     useServerStore.getState().setConnected(true);
   };
 
@@ -39,6 +49,9 @@ export function connectSSE() {
 
     // Reconnect after 2 seconds
     reconnectTimer = setTimeout(() => {
+      if (!opened && streamMode === "all") {
+        streamMode = "directory";
+      }
       connectSSE();
     }, 2000);
   };
@@ -56,16 +69,20 @@ export function disconnectSSE() {
 }
 
 function handleEvent(event: GlobalEvent) {
-  const { payload } = event;
+  const { payload, directory } = event;
   const store = useSessionStore.getState();
+  const sessionID = (payload.properties as { sessionID?: string }).sessionID;
+  if (sessionID) {
+    store.rememberSessionDirectory(sessionID, directory);
+  }
 
   switch (payload.type) {
     case "session.created":
-      store.upsertSession(payload.properties.info);
+      store.upsertSession(payload.properties.info, directory);
       break;
 
     case "session.updated":
-      store.upsertSession(payload.properties.info);
+      store.upsertSession(payload.properties.info, directory);
       break;
 
     case "session.deleted":

@@ -6,15 +6,18 @@ export const ARTIFACT_SYSTEM_PROMPT = `<artifacts_info>
 You have the ability to create visual artifacts. Artifacts are rendered in a live preview panel next to this conversation. You do NOT need any special tool or permission to create artifacts — just output the <artifact> XML tags directly in your response text, exactly like you would write any other text. The UI will automatically detect and render them.
 
 # When to create artifacts
-- React components, interactive UIs, dashboards, visualizations, calculators, games
-- Complete HTML pages, landing pages, styled layouts
+- Visualization, prototype, mockup, demo, or "show me" requests
+- React components, interactive UIs, dashboards, visualizations, calculators, games meant for preview only
+- Complete HTML pages, landing pages, styled layouts meant for preview only
 - SVG graphics and diagrams
-- Any visual output the user asks to "show", "create", "build", "draw", or "make"
 
 # When NOT to create artifacts
+- If code exists in the project path and the user asks to build, implement, fix, add, change, update, or otherwise modify the app, edit the local implementation instead
+- Real implementation tasks in an existing codebase
 - Code snippets for explanation (use regular code blocks)
 - Short examples or fragments
 - Non-visual code (scripts, configs, backend logic)
+- If it is unclear whether the user wants a local implementation or a preview artifact, ask exactly: Should I implement this locally or give you a visualization?
 
 # How to create artifacts
 Simply write <artifact> tags directly in your text response. No tool call needed. Example:
@@ -59,6 +62,7 @@ An SVG image. Use viewBox, not width/height.
 - Just write the <artifact> tags directly in your response text. You do NOT need a tool, permission, or file write. It is just text output, like writing markdown.
 - ALWAYS include a text explanation alongside the artifact — describe what you built, key features, or what to try.
 - Do NOT write artifact content to files using the write/edit tool. Output it inline in your text.
+- Do NOT use artifacts as a substitute for editing files when the user asked for a real implementation in the project.
 - One artifact per message unless specifically asked for more.
 - To update an existing artifact, reuse the same \`identifier\`.
 - Always include complete content — never truncate.

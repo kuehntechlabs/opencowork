@@ -54,6 +54,7 @@ export function ChatView({ sessionId }: Props) {
         agent,
         variant: selectedVariant ?? undefined,
       });
+      return true;
     },
     [
       sessionId,
@@ -131,6 +132,7 @@ export function ChatView({ sessionId }: Props) {
       <div className="border-t border-border p-4">
         <MessageInput
           onSend={handleSend}
+          draftKey={sessionId}
           isBusy={isBusy}
           onAbort={handleAbort}
           placeholder={isBusy ? "Send to interrupt..." : "Send a message..."}

@@ -6,9 +6,10 @@ import {
   extractCodeBlocks,
   isArtifactLanguage,
   isReactLanguage,
-  detectLocalhostUrls,
+  choosePreviewUrl,
   detectNotebookPaths,
 } from "../utils/artifact-detection";
+import { getBaseUrl } from "../api/client";
 
 /**
  * Watches streaming message parts for artifact-eligible content
@@ -171,19 +172,20 @@ export function useArtifactDetector(sessionId: string) {
               seenRef.current.add(toolKey);
               const output = part.state.output;
 
-              const urls = detectLocalhostUrls(output);
-              for (const url of urls) {
+              const url = choosePreviewUrl(output, getBaseUrl());
+              if (url) {
                 const urlKey = `browser-${url}`;
-                if (seenRef.current.has(urlKey)) continue;
-                seenRef.current.add(urlKey);
+                if (!seenRef.current.has(urlKey)) {
+                  seenRef.current.add(urlKey);
 
-                useArtifactStore.getState().addArtifact({
-                  type: "browser",
-                  title: url,
-                  url,
-                  sessionId,
-                  createdByMessageId: msg.id,
-                });
+                  useArtifactStore.getState().addArtifact({
+                    type: "browser",
+                    title: url,
+                    url,
+                    sessionId,
+                    createdByMessageId: msg.id,
+                  });
+                }
               }
 
               const inputStr = JSON.stringify(part.state.input);

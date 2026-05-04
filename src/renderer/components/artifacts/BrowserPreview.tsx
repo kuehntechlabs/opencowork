@@ -1,13 +1,16 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useArtifactStore } from "../../stores/artifact-store";
 
 interface Props {
+  artifactId: string;
   url: string;
 }
 
-export function BrowserPreview({ url: initialUrl }: Props) {
+export function BrowserPreview({ artifactId, url: initialUrl }: Props) {
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   const [loading, setLoading] = useState(true);
   const webviewRef = useRef<HTMLElement>(null);
+  const removeArtifact = useArtifactStore((s) => s.removeArtifact);
 
   useEffect(() => {
     setCurrentUrl(initialUrl);
@@ -48,6 +51,10 @@ export function BrowserPreview({ url: initialUrl }: Props) {
   const handleReload = useCallback(() => {
     (webviewRef.current as any)?.reload?.();
   }, []);
+
+  const handleClose = useCallback(() => {
+    removeArtifact(artifactId);
+  }, [artifactId, removeArtifact]);
 
   return (
     <div className="flex h-full flex-col">
@@ -108,6 +115,23 @@ export function BrowserPreview({ url: initialUrl }: Props) {
           )}
           {currentUrl}
         </div>
+        <button
+          onClick={handleClose}
+          className="rounded p-1 text-text-tertiary hover:bg-surface-hover hover:text-text"
+          title="Close browser preview"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
       </div>
 
       {/* Webview */}

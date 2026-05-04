@@ -95,11 +95,17 @@ export function useSlashCommands({
 
     inFlightUndoRedo.add(activeSessionId);
     try {
+      const directory = session?.directory;
       if (status?.type === "busy") {
-        await api.abortSession(activeSessionId).catch(() => {});
+        await api.abortSession(activeSessionId, directory).catch(() => {});
       }
       try {
-        await api.revertSession(activeSessionId, target.id);
+        await api.revertSession(
+          activeSessionId,
+          target.id,
+          undefined,
+          directory,
+        );
       } catch (err) {
         console.error("Undo failed:", err);
         window.api
@@ -150,14 +156,20 @@ export function useSlashCommands({
 
     inFlightUndoRedo.add(activeSessionId);
     try {
+      const directory = session?.directory;
       if (status?.type === "busy") {
-        await api.abortSession(activeSessionId).catch(() => {});
+        await api.abortSession(activeSessionId, directory).catch(() => {});
       }
       try {
         if (next) {
-          await api.revertSession(activeSessionId, next.id);
+          await api.revertSession(
+            activeSessionId,
+            next.id,
+            undefined,
+            directory,
+          );
         } else {
-          await api.unrevertSession(activeSessionId);
+          await api.unrevertSession(activeSessionId, directory);
         }
       } catch (err) {
         console.error("Redo failed:", err);
@@ -187,8 +199,15 @@ export function useSlashCommands({
         .catch(() => {});
       return true;
     }
+    const directory =
+      useSessionStore.getState().sessions[activeSessionId]?.directory;
     await api
-      .summarizeSession(activeSessionId, selectedProvider, selectedModel)
+      .summarizeSession(
+        activeSessionId,
+        selectedProvider,
+        selectedModel,
+        directory,
+      )
       .catch((err) => {
         console.error("Compact failed:", err);
       });

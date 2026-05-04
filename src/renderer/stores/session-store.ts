@@ -16,9 +16,24 @@ import type {
 import * as api from "../api/client";
 import { useSettingsStore } from "./settings-store";
 import { useArtifactStore } from "./artifact-store";
+import { useServerStore } from "./server-store";
+
+function withDirectory(session: Session, directory?: string): Session {
+  return session.directory || !directory ? session : { ...session, directory };
+}
+
+function getSessionDirectory(
+  state: Pick<SessionState, "sessions" | "sessionDirectories">,
+  sessionId: string,
+): string | undefined {
+  return (
+    state.sessions[sessionId]?.directory || state.sessionDirectories[sessionId]
+  );
+}
 
 interface SessionState {
   sessions: Record<string, Session>;
+  sessionDirectories: Record<string, string>;
   activeSessionId: string | null;
   messages: Record<string, Message[]>;
   parts: Record<string, Part[]>;
@@ -64,8 +79,9 @@ interface SessionState {
   abortSession: (id: string) => Promise<void>;
 
   // SSE event handlers
-  upsertSession: (session: Session) => void;
+  upsertSession: (session: Session, directory?: string) => void;
   removeSession: (id: string) => void;
+  rememberSessionDirectory: (id: string, directory?: string) => void;
   setSessionStatus: (id: string, status: SessionStatus) => void;
   upsertMessage: (sessionId: string, message: Message) => void;
   removeMessage: (sessionId: string, messageId: string) => void;
@@ -94,6 +110,7 @@ interface SessionState {
 
 export const useSessionStore = create<SessionState>((set, get) => ({
   sessions: {},
+  sessionDirectories: {},
   activeSessionId: null,
   messages: {},
   parts: {},
@@ -131,12 +148,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   loadSessions: async () => {
     set({ loading: true });
     try {
+      const directory = useServerStore.getState().directory;
       const list = await api.listSessions();
-      const sessions: Record<string, Session> = {};
+      const sessionDirectories = { ...get().sessionDirectories };
+      const sessions: Record<string, Session> = directory
+        ? Object.fromEntries(
+            Object.entries(get().sessions).filter(
+              ([, session]) => session.directory !== directory,
+            ),
+          )
+        : {};
       for (const s of list) {
-        sessions[s.id] = s;
+        const scoped = withDirectory(s, directory);
+        sessions[scoped.id] = scoped;
+        if (scoped.directory) sessionDirectories[scoped.id] = scoped.directory;
       }
-      set({ sessions, loading: false });
+      set({ sessions, sessionDirectories, loading: false });
     } catch {
       set({ loading: false });
     }
@@ -144,8 +171,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   loadMessages: async (sessionId) => {
     try {
+      const directory = getSessionDirectory(get(), sessionId);
       // API returns { info: Message, parts: Part[] }[]
-      const response = await api.getMessages(sessionId);
+      const response = await api.getMessages(sessionId, directory);
       // Handle both array and object responses
       const withParts = Array.isArray(response) ? response : [];
       const msgs: Message[] = [];
@@ -172,19 +200,27 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   createSession: async (directory, permissionAction) => {
     const session = await api.createSession(directory, permissionAction);
+    const scopedSession = withDirectory(session, directory);
     set((s) => ({
-      sessions: { ...s.sessions, [session.id]: session },
-      activeSessionId: session.id,
+      sessions: { ...s.sessions, [scopedSession.id]: scopedSession },
+      sessionDirectories: {
+        ...s.sessionDirectories,
+        [scopedSession.id]: scopedSession.directory,
+      },
+      activeSessionId: scopedSession.id,
     }));
-    return session;
+    return scopedSession;
   },
 
   deleteSession: async (id) => {
-    await api.deleteSession(id);
+    const directory = getSessionDirectory(get(), id);
+    await api.deleteSession(id, directory);
     set((s) => {
       const { [id]: _, ...rest } = s.sessions;
+      const { [id]: _dir, ...sessionDirectories } = s.sessionDirectories;
       return {
         sessions: rest,
+        sessionDirectories,
         activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
       };
     });
@@ -218,8 +254,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         for (const [id, sess] of Object.entries(state.sessions)) {
           if (!deletedSet.has(id)) nextSessions[id] = sess;
         }
+        const sessionDirectories: Record<string, string> = {};
+        for (const [id, dir] of Object.entries(state.sessionDirectories)) {
+          if (!deletedSet.has(id)) sessionDirectories[id] = dir;
+        }
         return {
           sessions: nextSessions,
+          sessionDirectories,
           activeSessionId:
             state.activeSessionId && deletedSet.has(state.activeSessionId)
               ? null
@@ -277,44 +318,87 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   archiveSession: async (id) => {
-    const updated = await api.updateSession(id, {
-      time: { archived: Date.now() },
-    });
+    const directory = getSessionDirectory(get(), id);
+    const updated = withDirectory(
+      await api.updateSession(
+        id,
+        {
+          time: { archived: Date.now() },
+        },
+        directory,
+      ),
+      directory,
+    );
     set((s) => ({
       sessions: { ...s.sessions, [id]: updated },
+      sessionDirectories: updated.directory
+        ? { ...s.sessionDirectories, [id]: updated.directory }
+        : s.sessionDirectories,
       activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
     }));
   },
 
   unarchiveSession: async (id) => {
-    const updated = await api.updateSession(id, { time: { archived: 0 } });
+    const directory = getSessionDirectory(get(), id);
+    const updated = withDirectory(
+      await api.updateSession(id, { time: { archived: 0 } }, directory),
+      directory,
+    );
     set((s) => ({
       sessions: { ...s.sessions, [id]: updated },
+      sessionDirectories: updated.directory
+        ? { ...s.sessionDirectories, [id]: updated.directory }
+        : s.sessionDirectories,
     }));
   },
 
   sendPrompt: async (sessionId, parts, options) => {
-    await api.sendPrompt(sessionId, parts, options);
+    const directory = getSessionDirectory(get(), sessionId);
+    await api.sendPrompt(sessionId, parts, options, directory);
   },
 
   abortSession: async (id) => {
-    await api.abortSession(id);
+    const directory = getSessionDirectory(get(), id);
+    await api.abortSession(id, directory);
   },
 
   // SSE handlers
-  upsertSession: (session) =>
-    set((s) => ({
-      sessions: { ...s.sessions, [session.id]: session },
-    })),
+  upsertSession: (session, directory) =>
+    set((s) => {
+      const scoped = withDirectory(
+        session,
+        directory ||
+          s.sessions[session.id]?.directory ||
+          s.sessionDirectories[session.id],
+      );
+      return {
+        sessions: { ...s.sessions, [scoped.id]: scoped },
+        sessionDirectories: scoped.directory
+          ? { ...s.sessionDirectories, [scoped.id]: scoped.directory }
+          : s.sessionDirectories,
+      };
+    }),
 
   removeSession: (id) =>
     set((s) => {
       const { [id]: _, ...rest } = s.sessions;
+      const { [id]: _dir, ...sessionDirectories } = s.sessionDirectories;
       return {
         sessions: rest,
+        sessionDirectories,
         activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
       };
     }),
+
+  rememberSessionDirectory: (id, directory) => {
+    if (!directory) return;
+    set((s) => ({
+      sessionDirectories: { ...s.sessionDirectories, [id]: directory },
+      sessions: s.sessions[id]
+        ? { ...s.sessions, [id]: withDirectory(s.sessions[id], directory) }
+        : s.sessions,
+    }));
+  },
 
   setSessionStatus: (id, status) =>
     set((s) => ({
@@ -418,7 +502,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   loadTodos: async (sessionId) => {
     try {
-      const todos = await api.getTodos(sessionId);
+      const directory = getSessionDirectory(get(), sessionId);
+      const todos = await api.getTodos(sessionId, directory);
       set((s) => ({
         todos: { ...s.todos, [sessionId]: todos },
       }));
@@ -429,7 +514,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   loadSessionDiff: async (sessionId) => {
     try {
-      const diff = await api.getSessionDiff(sessionId);
+      const directory = getSessionDirectory(get(), sessionId);
+      const diff = await api.getSessionDiff(sessionId, directory);
       set((s) => ({
         sessionDiffs: { ...s.sessionDiffs, [sessionId]: diff },
       }));

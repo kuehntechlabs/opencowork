@@ -20,6 +20,7 @@ export async function executeKnownCustomSlashCommand(input: {
   text: string;
   model?: string;
   variant?: string;
+  directory?: string;
 }) {
   const parsed = parseSlashCommand(input.text);
   if (!parsed) return false;
@@ -27,9 +28,15 @@ export async function executeKnownCustomSlashCommand(input: {
   const normalized = parsed.command.toLowerCase();
   const known = commands.some((cmd) => cmd.name.toLowerCase() === normalized);
   if (!known) return false;
-  await api.executeCommand(input.sessionId, normalized, parsed.args, {
-    model: input.model,
-    variant: input.variant,
-  });
+  await api.executeCommand(
+    input.sessionId,
+    normalized,
+    parsed.args,
+    {
+      model: input.model,
+      variant: input.variant,
+    },
+    input.directory,
+  );
   return true;
 }
