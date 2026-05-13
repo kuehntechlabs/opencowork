@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AppLayout } from "./components/layout/AppLayout";
-import { setBaseUrl, checkHealth } from "./api/client";
+import { setBaseUrl, setCredentials, checkHealth } from "./api/client";
 import {
   connectSSE,
   disconnectSSE,
@@ -32,12 +32,13 @@ export function App() {
           }
         }
 
-        const serverUrl = await window.api.getServerUrl();
+        const info = await window.api.getServerUrl();
         if (cancelled) return;
 
-        if (serverUrl) {
-          setBaseUrl(serverUrl);
-          setUrl(serverUrl);
+        if (info) {
+          setBaseUrl(info.url);
+          setCredentials(info.password);
+          setUrl(info.url);
 
           // Wait for server to be ready
           let retries = 0;

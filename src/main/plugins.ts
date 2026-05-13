@@ -13,7 +13,7 @@ import {
 import { join } from "node:path";
 import { homedir } from "node:os";
 import log from "electron-log";
-import { writeMCPConfig, removeMCPConfig } from "./sidecar";
+import { writeMCPConfig, removeMCPConfig } from "./server";
 
 const execFileAsync = promisify(execFile);
 

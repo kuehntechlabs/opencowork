@@ -7,7 +7,16 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: { index: "src/main/index.ts" },
+        // Two entries: `index` is the Electron main process; `sidecar` is
+        // forked via utilityProcess.fork() and hosts the opencode HTTP server.
+        input: {
+          index: "src/main/index.ts",
+          sidecar: "src/main/sidecar.ts",
+        },
+        output: {
+          chunkFileNames: "chunks/[name]-[hash].js",
+          assetFileNames: "chunks/[name]-[hash][extname]",
+        },
       },
     },
   },

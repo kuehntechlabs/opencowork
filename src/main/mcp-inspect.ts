@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import log from "electron-log";
-import { readOpencodeConfig } from "./sidecar";
+import { readOpencodeConfig } from "./server";
 
 export interface MCPTool {
   name: string;

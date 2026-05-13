@@ -1,10 +1,10 @@
-import { getBaseUrl } from "./client";
-import type { GlobalEvent, Part } from "./types";
+import { fetchEventSource } from "@microsoft/fetch-event-source";
+import { getBaseUrl, getCredentials } from "./client";
+import type { GlobalEvent } from "./types";
 import { useSessionStore } from "../stores/session-store";
 import { useServerStore } from "../stores/server-store";
 
-let eventSource: EventSource | null = null;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let abort: AbortController | null = null;
 let streamMode: "all" | "directory" = "all";
 
 export function isSSEDirectoryScoped() {
@@ -13,76 +13,77 @@ export function isSSEDirectoryScoped() {
 
 export function connectSSE() {
   const url = getBaseUrl();
-  if (!url) return;
+  const password = getCredentials();
+  if (!url || !password) return;
 
   disconnectSSE();
+  abort = new AbortController();
 
-  let opened = false;
   const directory = useServerStore.getState().directory;
   const params = new URLSearchParams();
-  if (streamMode === "directory" && directory) {
-    params.set("directory", directory);
-  }
-  const sseUrl = `${url}/global/event${
-    params.toString() ? "?" + params.toString() : ""
-  }`;
-  eventSource = new EventSource(sseUrl);
+  if (streamMode === "directory" && directory) params.set("directory", directory);
+  const sseUrl = `${url}/global/event${params.toString() ? "?" + params.toString() : ""}`;
+  const auth = "Basic " + btoa("opencode:" + password);
 
-  eventSource.onopen = () => {
-    opened = true;
-    useServerStore.getState().setConnected(true);
-  };
-
-  eventSource.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data) as GlobalEvent;
-      handleEvent(data);
-    } catch {
-      // ignore parse errors
-    }
-  };
-
-  eventSource.onerror = () => {
-    useServerStore.getState().setConnected(false);
-    eventSource?.close();
-    eventSource = null;
-
-    // Reconnect after 2 seconds
-    reconnectTimer = setTimeout(() => {
-      if (!opened && streamMode === "all") {
-        streamMode = "directory";
+  let opened = false;
+  fetchEventSource(sseUrl, {
+    signal: abort.signal,
+    headers: { Authorization: auth },
+    openWhenHidden: true,
+    onopen: async (res) => {
+      if (res.status === 200) {
+        opened = true;
+        useServerStore.getState().setConnected(true);
+        return;
       }
-      connectSSE();
-    }, 2000);
-  };
+      throw new Error(`SSE open failed status=${res.status}`);
+    },
+    onmessage: (ev) => {
+      if (!ev.data) return;
+      try {
+        const data = JSON.parse(ev.data) as GlobalEvent;
+        handleEvent(data);
+      } catch {
+        // ignore parse errors
+      }
+    },
+    onerror: (err) => {
+      useServerStore.getState().setConnected(false);
+      if (!opened && streamMode === "all") {
+        // Flip to directory mode and let the polyfill retry on the new URL.
+        streamMode = "directory";
+        // Re-throw an Error so fetchEventSource closes this stream;
+        // then reconnect via a fresh call (the polyfill's auto-retry won't
+        // pick up the URL change otherwise).
+        setTimeout(() => connectSSE(), 0);
+        throw err;
+      }
+      // Otherwise, let the polyfill retry with our backoff delay (ms).
+      return 2000;
+    },
+  }).catch(() => {
+    // Aborted or final failure — leave it; the renderer will retry on user action.
+  });
 }
 
 export function disconnectSSE() {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-  if (eventSource) {
-    eventSource.close();
-    eventSource = null;
+  if (abort) {
+    abort.abort();
+    abort = null;
   }
 }
 
 function handleEvent(event: GlobalEvent) {
-  const { payload, directory } = event;
+  const { payload } = event;
   const store = useSessionStore.getState();
-  const sessionID = (payload.properties as { sessionID?: string }).sessionID;
-  if (sessionID) {
-    store.rememberSessionDirectory(sessionID, directory);
-  }
 
   switch (payload.type) {
     case "session.created":
-      store.upsertSession(payload.properties.info, directory);
+      store.upsertSession(payload.properties.info);
       break;
 
     case "session.updated":
-      store.upsertSession(payload.properties.info, directory);
+      store.upsertSession(payload.properties.info);
       break;
 
     case "session.deleted":

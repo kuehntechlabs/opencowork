@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { CatalogItem } from "../data/marketplace-catalog";
-import { setBaseUrl, checkHealth } from "../api/client";
+import { setBaseUrl, setCredentials, checkHealth } from "../api/client";
 import { connectSSE, disconnectSSE } from "../api/events";
 import { useServerStore } from "../stores/server-store";
 
@@ -20,11 +20,12 @@ export interface ConfigPrompt {
 
 /** Restart the sidecar and reconnect the renderer to the new URL */
 export async function restartAndReconnect(): Promise<void> {
-  const newUrl = await api.restartSidecar();
-  if (newUrl) {
-    setBaseUrl(newUrl);
+  const info = await api.restartSidecar();
+  if (info) {
+    setBaseUrl(info.url);
+    setCredentials(info.password);
     const serverStore = useServerStore.getState();
-    serverStore.setUrl(newUrl);
+    serverStore.setUrl(info.url);
     disconnectSSE();
 
     for (let i = 0; i < 15; i++) {

@@ -14,6 +14,7 @@ import { useServerStore } from "../stores/server-store";
 import { ARTIFACT_SYSTEM_PROMPT } from "../utils/artifact-prompt";
 
 let baseUrl: string | null = null;
+let credentials: string | null = null;
 
 export function setBaseUrl(url: string) {
   baseUrl = url;
@@ -21,6 +22,14 @@ export function setBaseUrl(url: string) {
 
 export function getBaseUrl(): string | null {
   return baseUrl;
+}
+
+export function setCredentials(password: string | null) {
+  credentials = password;
+}
+
+export function getCredentials(): string | null {
+  return credentials;
 }
 
 function getDirectory(): string | undefined {
@@ -38,6 +47,9 @@ function buildHeaders(
   const dir = directory === undefined ? getDirectory() : directory || undefined;
   if (dir) {
     headers["x-opencode-directory"] = dir;
+  }
+  if (credentials) {
+    headers["Authorization"] = "Basic " + btoa("opencode:" + credentials);
   }
   return headers;
 }
@@ -113,10 +125,7 @@ export async function deleteSessionInDirectory(
   if (!baseUrl) throw new Error("Server not connected");
   const res = await fetch(`${baseUrl}/session/${id}`, {
     method: "DELETE",
-    headers: {
-      "Content-Type": "application/json",
-      "x-opencode-directory": directory,
-    },
+    headers: buildHeaders(undefined, directory),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -422,7 +431,9 @@ export async function getSessionDiff(
 export async function checkHealth(): Promise<boolean> {
   try {
     if (!baseUrl) return false;
-    const res = await fetch(`${baseUrl}/health`);
+    const res = await fetch(`${baseUrl}/health`, {
+      headers: buildHeaders(),
+    });
     return res.ok;
   } catch {
     return false;

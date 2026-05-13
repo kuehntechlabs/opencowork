@@ -8,13 +8,20 @@ const config: Configuration = {
     output: "dist",
     buildResources: "resources",
   },
-  files: ["out/**/*", "resources/**/*", "!resources/bin"],
-  extraResources: [
-    {
-      from: "resources/bin",
-      to: "bin",
-      filter: ["**/*"],
-    },
+  files: [
+    "out/**/*",
+    "resources/**/*",
+    "vendor/opencode/packages/opencode/dist/node/**",
+    "!vendor/opencode/packages/opencode/dist/node/*.map",
+  ],
+  // WASM and native .node binaries cannot be loaded from inside app.asar; the
+  // in-process opencode server pulls in tree-sitter WASM and (optionally)
+  // @lydell/node-pty / @parcel/watcher native modules, so we unpack them.
+  asarUnpack: [
+    "out/main/chunks/**",
+    "vendor/opencode/packages/opencode/dist/node/**",
+    "node_modules/@lydell/node-pty*/**",
+    "node_modules/@parcel/watcher*/**",
   ],
   mac: {
     category: "public.app-category.developer-tools",

@@ -1,282 +1,140 @@
-import {
-  spawn,
-  execSync,
-  execFileSync,
-  type ChildProcess,
-} from "node:child_process";
-import { createServer } from "node:net";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
-import { app } from "electron";
-import log from "electron-log";
-import treeKill from "tree-kill";
+/**
+ * Worker entry — runs inside an Electron utility process.
+ *
+ * Receives start/stop messages from the host (src/main/server.ts), imports the
+ * opencode Node bundle dynamically, calls `Server.listen()`, and posts ready /
+ * sqlite-progress / error messages back to the host via `process.parentPort`.
+ */
+import { pathToFileURL } from "node:url";
+import type {
+  OpencodeServerModule,
+  OpencodeServerListener,
+} from "./opencode-server";
 
-/** Get a full PATH that includes common binary locations (packaged apps have a minimal PATH) */
-function getShellPath(): string {
-  const base = process.env.PATH || "";
-  try {
-    // Grab the user's real shell PATH
-    const shellPath = execSync(
-      "zsh -ilc 'echo $PATH' 2>/dev/null || bash -ilc 'echo $PATH' 2>/dev/null",
-      {
-        encoding: "utf-8",
-        timeout: 5000,
-      },
-    ).trim();
-    if (shellPath) return shellPath;
-  } catch {
-    // Fallback: add common locations manually
-  }
-  const home = homedir();
-  const extras = [
-    "/usr/local/bin",
-    "/opt/homebrew/bin",
-    `${home}/.nvm/versions/node/*/bin`,
-    `${home}/.npm-global/bin`,
-    "/usr/bin",
-    "/bin",
-  ];
-  return [...new Set([...base.split(":"), ...extras])].join(":");
-}
-
-export interface SidecarInfo {
-  url: string;
-  process: ChildProcess;
-}
-
-let sidecar: SidecarInfo | null = null;
-
-const configDir = join(homedir(), ".config", "opencode");
-const configPath = join(configDir, "config.json");
-
-function ensureOpencodeConfig(): void {
-  const desiredConfig = {
-    mcp: {
-      gitnexus: {
-        type: "local" as const,
-        command: ["npx", "-y", "gitnexus@latest", "mcp"],
-      },
-    },
+// Electron's utility-process API exposes `process.parentPort`, but @types/node
+// doesn't ship it. Augment locally so the rest of the file stays typed.
+declare const process: NodeJS.Process & {
+  parentPort: {
+    on(event: "message", listener: (e: { data: unknown }) => void): void;
+    postMessage(msg: unknown): void;
   };
+};
 
-  try {
-    if (existsSync(configPath)) {
-      const raw = readFileSync(configPath, "utf-8");
-      const existing = JSON.parse(raw);
+type StartCommand = {
+  type: "start";
+  bundlePath: string;
+  port: number;
+  password: string;
+  xdgStateHome: string;
+  needsMigration: boolean;
+};
+type StopCommand = { type: "stop" };
+type Cmd = StartCommand | StopCommand;
 
-      // Fix gitnexus MCP entry if it exists but has wrong format
-      if (existing.mcp?.gitnexus && !existing.mcp.gitnexus.type) {
-        existing.mcp.gitnexus = desiredConfig.mcp.gitnexus;
-        writeFileSync(configPath, JSON.stringify(existing, null, 2) + "\n");
-        log.info("Fixed opencode config: updated gitnexus MCP format");
-      }
-    } else {
-      mkdirSync(configDir, { recursive: true });
-      writeFileSync(configPath, JSON.stringify(desiredConfig, null, 2) + "\n");
-      log.info("Created opencode config with gitnexus MCP");
+type OutMsg =
+  | {
+      type: "sqlite";
+      progress:
+        | { type: "InProgress"; value: number }
+        | { type: "Done" };
     }
-  } catch (err) {
-    log.warn("Failed to ensure opencode config:", err);
-  }
+  | { type: "ready"; url: string; port: number }
+  | { type: "stopped" }
+  | { type: "error"; reason: string; stack?: string };
+
+let listener: OpencodeServerListener | null = null;
+
+function send(msg: OutMsg): void {
+  process.parentPort.postMessage(msg);
 }
 
-/** Try to kill any existing process listening on the given port */
-function killProcessOnPort(port: number): void {
-  try {
-    const output = execFileSync(
-      "lsof",
-      ["-ti", `tcp:${port}`, "-sTCP:LISTEN"],
-      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
-    ).trim();
-    if (output) {
-      // Kill only the first listening PID (the sidecar), not client connections
-      const pid = parseInt(output.split("\n")[0]!, 10);
-      if (pid && pid !== process.pid) {
-        log.info(`Killing existing process ${pid} on port ${port}`);
-        process.kill(pid, "SIGTERM");
+process.parentPort.on("message", async (event: { data: unknown }) => {
+  const cmd = event.data as Cmd;
+  if (cmd?.type === "start") {
+    try {
+      process.env.OPENCODE_SERVER_USERNAME = "opencode";
+      process.env.OPENCODE_SERVER_PASSWORD = cmd.password;
+      process.env.XDG_STATE_HOME = cmd.xdgStateHome;
+      process.env.XDG_DATA_HOME = cmd.xdgStateHome;
+      process.env.XDG_CACHE_HOME = cmd.xdgStateHome;
+      process.env.NO_PROXY = "127.0.0.1,localhost,::1";
+
+      const mod = (await import(
+        pathToFileURL(cmd.bundlePath).href
+      )) as unknown as OpencodeServerModule;
+
+      if (typeof mod?.Server?.listen !== "function") {
+        send({
+          type: "error",
+          reason: "incompatible-bundle: Server.listen missing",
+        });
+        process.exit(1);
+        return;
       }
-    }
-  } catch {
-    // No process on port, that's fine
-  }
-}
 
-/** Find a free port starting from the preferred one */
-function findFreePort(preferred: number): Promise<number> {
-  return new Promise((resolve) => {
-    const server = createServer();
-    server.listen(preferred, "127.0.0.1", () => {
-      server.close(() => resolve(preferred));
-    });
-    server.on("error", () => {
-      // Port busy, try next
-      const server2 = createServer();
-      server2.listen(0, "127.0.0.1", () => {
-        const addr = server2.address();
-        const port = typeof addr === "object" && addr ? addr.port : 0;
-        server2.close(() => resolve(port));
-      });
-    });
-  });
-}
+      if (mod.Log?.init) {
+        await mod.Log.init({ level: "WARN" });
+      }
 
-export async function startSidecar(port = 4096): Promise<SidecarInfo> {
-  if (sidecar) return sidecar;
-
-  ensureOpencodeConfig();
-
-  // Try to free the preferred port first
-  killProcessOnPort(port);
-  // Short wait for the port to be released
-  await new Promise((r) => setTimeout(r, 300));
-
-  const actualPort = await findFreePort(port);
-  const args = ["serve", `--hostname=127.0.0.1`, `--port=${actualPort}`];
-
-  const fullPath = getShellPath();
-
-  // Prefer system-installed opencode, fall back to bundled binary
-  let opencodeBin = "opencode";
-  try {
-    execSync("which opencode", { env: { PATH: fullPath }, stdio: "pipe" });
-  } catch {
-    const bundledBin = join(
-      process.resourcesPath || app.getAppPath(),
-      "bin",
-      process.platform === "win32" ? "opencode.exe" : "opencode",
-    );
-    if (existsSync(bundledBin)) opencodeBin = bundledBin;
-  }
-
-  log.info(
-    `Starting opencode sidecar on port ${actualPort} (binary: ${opencodeBin})...`,
-  );
-
-  const proc = spawn(opencodeBin, args, {
-    env: {
-      ...process.env,
-      PATH: fullPath,
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  const url = await new Promise<string>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error("Timeout waiting for opencode server to start (10s)"));
-    }, 10000);
-
-    let output = "";
-
-    proc.stdout?.on("data", (chunk: Buffer) => {
-      output += chunk.toString();
-      const lines = output.split("\n");
-      for (const line of lines) {
-        if (line.includes("opencode server listening")) {
-          const match = line.match(/on\s+(https?:\/\/[^\s]+)/);
-          if (match) {
-            clearTimeout(timeout);
-            resolve(match[1]!);
-            return;
-          }
+      // JsonMigration: only run if requested. Upstream's invocation needs a
+      // drizzle client, which the bundle's Database.Client() provides. If
+      // anything throws, surface to the host as a fatal error.
+      if (
+        cmd.needsMigration &&
+        mod.JsonMigration?.run &&
+        mod.Database?.Client
+      ) {
+        try {
+          const client = mod.Database.Client();
+          await mod.JsonMigration.run(client.$client, {
+            progress: ({
+              current,
+              total,
+            }: {
+              current: number;
+              total: number;
+            }) => {
+              const value =
+                total > 0 ? Math.round((current / total) * 100) : 100;
+              send({
+                type: "sqlite",
+                progress: { type: "InProgress", value },
+              });
+            },
+          });
+          send({ type: "sqlite", progress: { type: "Done" } });
+        } catch (err) {
+          throw err;
         }
       }
-    });
 
-    proc.stderr?.on("data", (chunk: Buffer) => {
-      log.warn("opencode stderr:", chunk.toString());
-    });
-
-    proc.on("exit", (code) => {
-      clearTimeout(timeout);
-      reject(new Error(`opencode exited with code ${code}\n${output}`));
-    });
-
-    proc.on("error", (err) => {
-      clearTimeout(timeout);
-      reject(err);
-    });
-  });
-
-  log.info(`opencode sidecar ready at ${url}`);
-  sidecar = { url, process: proc };
-  return sidecar;
-}
-
-export function stopSidecar(): Promise<void> {
-  return new Promise((resolve) => {
-    if (!sidecar) {
-      resolve();
-      return;
-    }
-
-    const pid = sidecar.process.pid;
-    sidecar = null;
-
-    if (pid) {
-      treeKill(pid, "SIGTERM", (err) => {
-        if (err) log.warn("Error killing sidecar:", err);
-        resolve();
+      listener = await mod.Server.listen({
+        port: cmd.port,
+        hostname: "127.0.0.1",
+        username: "opencode",
+        password: cmd.password,
+        cors: ["http://localhost:*", "http://127.0.0.1:*"],
       });
-    } else {
-      resolve();
+
+      const actualPort = listener.port;
+      const url =
+        listener.url?.toString?.() ?? `http://127.0.0.1:${actualPort}/`;
+      send({ type: "ready", url, port: actualPort });
+    } catch (err) {
+      send({
+        type: "error",
+        reason: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      process.exit(1);
     }
-  });
-}
-
-export function getSidecarUrl(): string | null {
-  return sidecar?.url ?? null;
-}
-
-export function readOpencodeConfig(): Record<string, unknown> {
-  try {
-    if (existsSync(configPath)) {
-      return JSON.parse(readFileSync(configPath, "utf-8"));
+  } else if (cmd?.type === "stop") {
+    try {
+      await listener?.stop(true);
+    } catch {
+      // ignore — we're exiting anyway
     }
-  } catch (err) {
-    log.warn("Failed to read opencode config:", err);
+    send({ type: "stopped" });
+    process.exit(0);
   }
-  return {};
-}
-
-export function writeProviderConfig(
-  providerConfig: Record<string, unknown>,
-): void {
-  const existing = readOpencodeConfig();
-  existing.provider = providerConfig;
-  mkdirSync(configDir, { recursive: true });
-  writeFileSync(configPath, JSON.stringify(existing, null, 2) + "\n");
-  log.info("Updated opencode provider config");
-}
-
-export function writeMCPConfig(mcpConfig: Record<string, unknown>): void {
-  const existing = readOpencodeConfig();
-  existing.mcp = {
-    ...((existing.mcp as Record<string, unknown>) || {}),
-    ...mcpConfig,
-  };
-  mkdirSync(configDir, { recursive: true });
-  writeFileSync(configPath, JSON.stringify(existing, null, 2) + "\n");
-  log.info("Updated opencode MCP config");
-}
-
-export function removeMCPConfig(serverName: string): void {
-  const existing = readOpencodeConfig();
-  const mcp = (existing.mcp as Record<string, unknown>) || {};
-  delete mcp[serverName];
-  existing.mcp = mcp;
-  mkdirSync(configDir, { recursive: true });
-  writeFileSync(configPath, JSON.stringify(existing, null, 2) + "\n");
-  log.info(`Removed MCP server: ${serverName}`);
-}
-
-export async function restartSidecar(): Promise<string | null> {
-  await stopSidecar();
-  try {
-    const info = await startSidecar();
-    return info.url;
-  } catch (err) {
-    log.error("Failed to restart sidecar:", err);
-    return null;
-  }
-}
+});

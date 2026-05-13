@@ -26,12 +26,14 @@ import {
   startSidecar,
   stopSidecar,
   getSidecarUrl,
+  getSidecarPassword,
   readOpencodeConfig,
   writeProviderConfig,
   writeMCPConfig,
   removeMCPConfig,
   restartSidecar,
-} from "./sidecar";
+  getIsolatedStateDir,
+} from "./server";
 import {
   listMCPServers,
   listMCPServersFast,
@@ -94,7 +96,7 @@ function createWindow() {
         responseHeaders: {
           ...details.responseHeaders,
           "Content-Security-Policy": [
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://localhost:* https:; font-src 'self' data:;",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://localhost:* http://127.0.0.1:* https:; font-src 'self' data:;",
           ],
         },
       });
@@ -109,7 +111,12 @@ function createWindow() {
 }
 
 // IPC handlers
-ipcMain.handle("get-server-url", () => getSidecarUrl());
+function getServerInfo(): { url: string; password: string } | null {
+  const url = getSidecarUrl();
+  const password = getSidecarPassword();
+  return url && password ? { url, password } : null;
+}
+ipcMain.handle("get-server-url", () => getServerInfo());
 
 ipcMain.handle("open-directory-picker", async () => {
   if (!mainWindow) return null;
@@ -160,8 +167,8 @@ ipcMain.handle(
     writeProviderConfig(providerConfig),
 );
 ipcMain.handle("restart-sidecar", async () => {
-  const url = await restartSidecar();
-  return url;
+  await restartSidecar();
+  return getServerInfo();
 });
 
 async function syncOllamaModelsToConfig(): Promise<{
@@ -738,6 +745,113 @@ ipcMain.handle(
   },
 );
 
+// ---------------------------------------------------------------------------
+// First-run import & migration splash
+// ---------------------------------------------------------------------------
+
+let migrationSplash: BrowserWindow | null = null;
+
+function showMigrationSplash(): void {
+  if (migrationSplash) return;
+  migrationSplash = new BrowserWindow({
+    width: 380,
+    height: 160,
+    resizable: false,
+    movable: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: "#0f0f0f",
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    show: true,
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  migrationSplash.loadFile(
+    join(__dirname, "../../resources/migration-splash.html"),
+  );
+  migrationSplash.on("closed", () => {
+    migrationSplash = null;
+  });
+}
+
+function closeMigrationSplash(): void {
+  if (!migrationSplash) return;
+  try {
+    migrationSplash.close();
+  } catch {
+    // ignore
+  }
+  migrationSplash = null;
+}
+
+// Locations where a user's system `opencode` install might have written its
+// SQLite DB. Keyed by platform; we copy the first one that exists.
+function getSystemOpencodeDbCandidates(): string[] {
+  const home = homedir();
+  const candidates: string[] = [];
+  if (process.platform === "darwin") {
+    candidates.push(
+      join(home, "Library", "Application Support", "opencode", "opencode.db"),
+    );
+  }
+  if (process.env.XDG_DATA_HOME) {
+    candidates.push(join(process.env.XDG_DATA_HOME, "opencode", "opencode.db"));
+  }
+  candidates.push(join(home, ".local", "share", "opencode", "opencode.db"));
+  if (process.platform === "win32" && process.env.APPDATA) {
+    candidates.push(join(process.env.APPDATA, "opencode", "opencode.db"));
+  }
+  return candidates;
+}
+
+function maybeImportSystemOpencodeState(): void {
+  try {
+    const stateDir = getIsolatedStateDir();
+    const marker = join(stateDir, ".first-run-completed");
+    if (existsSync(marker)) return;
+
+    const candidate = getSystemOpencodeDbCandidates().find((p) =>
+      existsSync(p),
+    );
+    if (!candidate) {
+      // Nothing to import — mark complete and move on.
+      writeFileSync(marker, new Date().toISOString());
+      return;
+    }
+
+    const { dialog } = require("electron") as typeof import("electron");
+    const res = dialog.showMessageBoxSync({
+      type: "question",
+      buttons: ["Import", "Start fresh", "Don't ask again"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "Import opencode sessions?",
+      message: "We found an existing opencode install on this machine.",
+      detail:
+        "OpenCowork keeps its own isolated session history. Import sessions from your existing opencode install? You can always start fresh later.",
+    });
+    if (res === 0) {
+      try {
+        copyFileSync(candidate, join(stateDir, "opencode.db"));
+        log.info(`Imported opencode DB from ${candidate}`);
+      } catch (err) {
+        log.warn("Failed to import opencode DB:", err);
+      }
+    }
+    writeFileSync(marker, new Date().toISOString());
+  } catch (err) {
+    log.warn("first-run import probe failed:", err);
+  }
+}
+
 // App lifecycle
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
@@ -760,10 +874,24 @@ if (!gotSingleInstanceLock) {
       }
     }
 
+    // First-run only: offer to import sessions/auth from a system `opencode`
+    // install. After this returns, our isolated state dir is in a settled state.
+    maybeImportSystemOpencodeState();
+
+    // Decide whether to show the migration splash. We can't ask server.ts about
+    // needsMigration without starting it, so we read the same marker server.ts
+    // uses (existence of opencode.db inside the isolated state dir).
+    const needsMigration = !existsSync(
+      join(getIsolatedStateDir(), "opencode.db"),
+    );
+    if (needsMigration) showMigrationSplash();
+
     try {
       await startSidecar();
     } catch (err) {
       log.error("Failed to start opencode sidecar:", err);
+    } finally {
+      closeMigrationSplash();
     }
 
     syncOllamaModelsToConfig().catch(() => {});

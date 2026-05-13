@@ -141,12 +141,13 @@ export const useProviderConfigStore = create<ProviderConfigState>(
       try {
         const serialized = serializeConfig(get().providers);
         await window.api.writeProviderConfig(serialized);
-        const newUrl = await window.api.restartSidecar();
+        const info = await window.api.restartSidecar();
 
-        if (newUrl) {
-          setBaseUrl(newUrl);
+        if (info) {
+          setBaseUrl(info.url);
+          setCredentials(info.password);
           const serverStore = useServerStore.getState();
-          serverStore.setUrl(newUrl);
+          serverStore.setUrl(info.url);
           disconnectSSE();
 
           // Wait for healthy

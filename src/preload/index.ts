@@ -101,9 +101,26 @@ export interface MarketplacePluginInspection {
   error?: string;
 }
 
+export type ServerInfo = { url: string; password: string } | null;
+
+export type OpencodeMigrationProgress =
+  | { type: "InProgress"; value: number }
+  | { type: "Done" };
+
 const api = {
-  getServerUrl: (): Promise<string | null> =>
+  getServerUrl: (): Promise<ServerInfo> =>
     ipcRenderer.invoke("get-server-url"),
+  onOpencodeMigrationProgress: (
+    callback: (progress: OpencodeMigrationProgress) => void,
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      progress: OpencodeMigrationProgress,
+    ) => callback(progress);
+    ipcRenderer.on("opencode-migration-progress", handler);
+    return () =>
+      ipcRenderer.removeListener("opencode-migration-progress", handler);
+  },
   openDirectoryPicker: (): Promise<string | null> =>
     ipcRenderer.invoke("open-directory-picker"),
   showNotification: (title: string, body: string): Promise<void> =>
@@ -121,7 +138,7 @@ const api = {
     ipcRenderer.invoke("read-provider-config"),
   writeProviderConfig: (config: Record<string, unknown>): Promise<void> =>
     ipcRenderer.invoke("write-provider-config", config),
-  restartSidecar: (): Promise<string | null> =>
+  restartSidecar: (): Promise<ServerInfo> =>
     ipcRenderer.invoke("restart-sidecar"),
 
   // Projects
